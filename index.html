@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Card Randomizer Pro</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* 卡片顯示區域 */
+        .card-container {
+            width: 85vw;
+            max-width: 320px;
+            aspect-ratio: 2.5 / 3.5; /* 標準撲克牌比例 */
+            perspective: 1000px;
+            position: relative;
+        }
+        /* 撲克牌圖片樣式 */
+        .card-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            position: absolute;
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+        }
+        /* 向左滑出動畫 */
+        .swipe-left {
+            transform: translateX(-150%) rotate(-15deg);
+            opacity: 0;
+        }
+        /* 方案 A：右下角隱形按鈕 */
+        #secret-trigger {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            width: 65px;
+            height: 65px;
+            background-color: transparent; /* 完全透明 */
+            z-index: 9999;
+            cursor: pointer;
+        }
+        /* 狀態指示燈（非常暗的灰色，供魔術師肉眼識別） */
+        #status-indicator {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #262626; /* 與背景 #1a1a1a 極度接近，正面看幾乎隱形 */
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="status-indicator">M</div>
+
+    <div class="card-container" id="card-container">
+        <img src="./cards/spade_1.png" alt="Poker Card" class="card-img" id="poker-card">
+    </div>
+
+    <div id="secret-trigger"></div>
+
+    <script>
+        // 1. 嚴格對應你的花色命名與順序：黑桃 -> 方塊 -> 梅花 -> 紅心
+        const suits = ['spade', 'diamond', 'club', 'heart'];
+        
+        // 2. 嚴格對應你的點數命名規則
+        const numLabels = {
+            1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7',
+            8: '8', 9: '9', 10: '10', 11: 'jack', 12: 'queen', 13: 'king'
+        };
+
+        // 當前卡片狀態
+        let currentSuitIndex = 0; 
+        let currentNum = 1;      
+        let isAudienceMode = false; // 預設為魔術師隨機模式
+
+        // DOM 元素
+        const cardImg = document.getElementById('poker-card');
+        const secretTrigger = document.getElementById('secret-trigger');
+        const statusIndicator = document.getElementById('status-indicator');
+
+        // 3. 自動生成圖片路徑的函式
+        function getCardImagePath(suitIdx, num) {
+            const suitName = suits[suitIdx];
+            const numName = numLabels[num];
+            return `./cards/${suitName}_${numName}.png`;
+        }
+
+        // 4. 自動預載 52 張牌，避免表演時延遲、白畫面
+        function preloadImages() {
+            for (let s = 0; s < 4; s++) {
+                for (let n = 1; n <= 13; n++) {
+                    const img = new Image();
+                    img.src = getCardImagePath(s, n);
+                }
+            }
+            // 順便預載鬼牌 (備用)
+            const joker = new Image();
+            joker.src = './cards/joker_black.png';
+        }
+        preloadImages();
+
+        // 5. 更新卡片圖片路徑
+        function updateCardDOM(suitIdx, num) {
+            cardImg.src = getCardImagePath(suitIdx, num);
+        }
+
+        // 6. 核心魔術演算法（已改為加 5 邏輯）
+        function getNextCard() {
+            if (!isAudienceMode) {
+                // 【魔術師模式】真隨機
+                currentSuitIndex = Math.floor(Math.random() * 4);
+                currentNum = Math.floor(Math.random() * 13) + 1;
+            } else {
+                // 【觀眾模式】固定公式
+                // 花色順序循環：黑桃(0) -> 方塊(1) -> 梅花(2) -> 紅心(3) -> 黑桃(0)
+                currentSuitIndex = (currentSuitIndex + 1) % 4;
+                
+                // 數字固定加 5，超過 13 則減 13
+                currentNum = currentNum + 5;
+                if (currentNum > 13) {
+                    currentNum = currentNum - 13;
+                }
+            }
+        }
+
+        // 7. 滑動動畫處理
+        function handleSwipe() {
+            cardImg.classList.add('swipe-left');
+
+            setTimeout(() => {
+                // 在卡片消失在螢幕外時換圖
+                getNextCard();
+                updateCardDOM(currentSuitIndex, currentNum);
+
+                // 瞬間將新卡片藏到右側畫面外 (無動畫)
+                cardImg.style.transition = 'none';
+                cardImg.style.transform = 'translateX(150%) rotate(15deg)';
+                cardImg.style.opacity = '0';
+
+                // 強制重繪
+                cardImg.offsetHeight;
+
+                // 恢復動畫效果並滑入中央
+                cardImg.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+                cardImg.style.transform = 'none';
+                cardImg.style.opacity = '1';
+                cardImg.classList.remove('swipe-left');
+            }, 300);
+        }
+
+        // --- 方案 A：點擊右下角隱形按鈕切換模式 ---
+        secretTrigger.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止觸發全螢幕的點擊事件
+            isAudienceMode = !isAudienceMode;
+            
+            // 暗號切換
+            statusIndicator.textContent = isAudienceMode ? "A" : "M";
+        });
+
+        // --- 行動裝置滑動偵測 (向左滑) ---
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, false);
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            if (touchStartX - touchEndX > 50) { // 向左滑動超過 50 像素
+                handleSwipe();
+            }
+        }, false);
+
+        // 電腦版測試支援：點擊畫面任何地方（除右下角按鈕）等於向左滑
+        document.body.addEventListener('click', (e) => {
+            if(e.target.id !== 'secret-trigger') {
+                handleSwipe();
+            }
+        });
+
+        // 初始隨機挑選第一張顯示的牌
+        currentSuitIndex = Math.floor(Math.random() * 4);
+        currentNum = Math.floor(Math.random() * 13) + 1;
+        updateCardDOM(currentSuitIndex, currentNum);
+
+    </script>
+</body>
+</html>
