@@ -51,7 +51,7 @@
             bottom: 0;
             width: 65px;
             height: 65px;
-            background-color: transparent; /* 完全透明 */
+            background-color: transparent; /* 完全透明，觀眾看不到 */
             z-index: 9999;
             cursor: pointer;
         }
@@ -62,7 +62,7 @@
             left: 15px;
             font-size: 14px;
             font-weight: bold;
-            color: #262626; /* 與背景 #1a1a1a 極度接近，正面看幾乎隱形 */
+            color: #262626; /* 與背景 #1a1a1a 極度接近，正面看幾乎隱形，正式表演可改為 #1a1a1a */
             pointer-events: none;
         }
     </style>
@@ -78,7 +78,7 @@
     <div id="secret-trigger"></div>
 
     <script>
-        // 1. 嚴格對應你的花色命名與順序：黑桃 -> 方塊 -> 梅花 -> 紅心
+        // 1. 嚴格對應你的花色命名與順序：黑桃(0) -> 方塊(1) -> 梅花(2) -> 紅心(3)
         const suits = ['spade', 'diamond', 'club', 'heart'];
         
         // 2. 嚴格對應你的點數命名規則
@@ -104,7 +104,7 @@
             return `./cards/${suitName}_${numName}.png`;
         }
 
-        // 4. 自動預載 52 張牌，避免表演時延遲、白畫面
+        // 4. 自動預載 52 張牌，避免表演時因載入圖片而產生白畫面
         function preloadImages() {
             for (let s = 0; s < 4; s++) {
                 for (let n = 1; n <= 13; n++) {
@@ -112,7 +112,7 @@
                     img.src = getCardImagePath(s, n);
                 }
             }
-            // 順便預載鬼牌 (備用)
+            // 預載黑白鬼牌 (備用)
             const joker = new Image();
             joker.src = './cards/joker_black.png';
         }
@@ -123,12 +123,21 @@
             cardImg.src = getCardImagePath(suitIdx, num);
         }
 
-        // 6. 核心魔術演算法（已改為加 5 邏輯）
+        // 6. 核心魔術演算法（包含防重複與加 5 邏輯）
         function getNextCard() {
             if (!isAudienceMode) {
-                // 【魔術師模式】真隨機
-                currentSuitIndex = Math.floor(Math.random() * 4);
-                currentNum = Math.floor(Math.random() * 13) + 1;
+                // 【魔術師模式】真隨機（確保不會連續抽到同一張牌）
+                let nextSuitIndex, nextNum;
+                
+                do {
+                    nextSuitIndex = Math.floor(Math.random() * 4);
+                    nextNum = Math.floor(Math.random() * 13) + 1;
+                } while (nextSuitIndex === currentSuitIndex && nextNum === currentNum);
+                
+                // 確認抽到不同的牌後，才更新當前狀態
+                currentSuitIndex = nextSuitIndex;
+                currentNum = nextNum;
+                
             } else {
                 // 【觀眾模式】固定公式
                 // 花色順序循環：黑桃(0) -> 方塊(1) -> 梅花(2) -> 紅心(3) -> 黑桃(0)
@@ -156,7 +165,7 @@
                 cardImg.style.transform = 'translateX(150%) rotate(15deg)';
                 cardImg.style.opacity = '0';
 
-                // 強制重繪
+                // 強制瀏覽器重新渲染
                 cardImg.offsetHeight;
 
                 // 恢復動畫效果並滑入中央
@@ -172,7 +181,7 @@
             e.stopPropagation(); // 阻止觸發全螢幕的點擊事件
             isAudienceMode = !isAudienceMode;
             
-            // 暗號切換
+            // 暗號切換 (M 代表隨機，A 代表公式)
             statusIndicator.textContent = isAudienceMode ? "A" : "M";
         });
 
@@ -198,7 +207,7 @@
             }
         });
 
-        // 初始隨機挑選第一張顯示的牌
+        // 網頁初始隨機挑選第一張顯示的牌
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
