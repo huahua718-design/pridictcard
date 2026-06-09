@@ -39,9 +39,9 @@
             position: absolute;
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
-        /* 向左滑出動畫 */
-        .swipe-left {
-            transform: translateX(-150%) rotate(-15deg);
+        /* 向上滑出動畫效果 */
+        .swipe-up {
+            transform: translateY(-150%) rotate(-5deg);
             opacity: 0;
         }
         /* 方案 A：右下角隱形按鈕 */
@@ -51,7 +51,7 @@
             bottom: 0;
             width: 65px;
             height: 65px;
-            background-color: transparent; /* 完全透明，觀眾看不到 */
+            background-color: transparent; /* 完全透明 */
             z-index: 9999;
             cursor: pointer;
         }
@@ -62,7 +62,7 @@
             left: 15px;
             font-size: 14px;
             font-weight: bold;
-            color: #262626; /* 與背景 #1a1a1a 極度接近，正面看幾乎隱形，正式表演可改為 #1a1a1a */
+            color: #262626; /* 與背景極度接近，正面看幾乎隱形 */
             pointer-events: none;
         }
     </style>
@@ -104,7 +104,7 @@
             return `./cards/${suitName}_${numName}.png`;
         }
 
-        // 4. 自動預載 52 張牌，避免表演時因載入圖片而產生白畫面
+        // 4. 自動預載 52 張牌
         function preloadImages() {
             for (let s = 0; s < 4; s++) {
                 for (let n = 1; n <= 13; n++) {
@@ -112,7 +112,6 @@
                     img.src = getCardImagePath(s, n);
                 }
             }
-            // 預載黑白鬼牌 (備用)
             const joker = new Image();
             joker.src = './cards/joker_black.png';
         }
@@ -134,16 +133,13 @@
                     nextNum = Math.floor(Math.random() * 13) + 1;
                 } while (nextSuitIndex === currentSuitIndex && nextNum === currentNum);
                 
-                // 確認抽到不同的牌後，才更新當前狀態
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
                 
             } else {
                 // 【觀眾模式】固定公式
-                // 花色順序循環：黑桃(0) -> 方塊(1) -> 梅花(2) -> 紅心(3) -> 黑桃(0)
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
                 
-                // 數字固定加 5，超過 13 則減 13
                 currentNum = currentNum + 5;
                 if (currentNum > 13) {
                     currentNum = currentNum - 13;
@@ -151,56 +147,55 @@
             }
         }
 
-        // 7. 滑動動畫處理
+        // 7. 向上滑動動畫處理
         function handleSwipe() {
-            cardImg.classList.add('swipe-left');
+            cardImg.classList.add('swipe-up');
 
             setTimeout(() => {
-                // 在卡片消失在螢幕外時換圖
+                // 在卡片飛出螢幕外時換圖
                 getNextCard();
                 updateCardDOM(currentSuitIndex, currentNum);
 
-                // 瞬間將新卡片藏到右側畫面外 (無動畫)
+                // 瞬間將新卡片藏到下方畫面外 (無動畫)
                 cardImg.style.transition = 'none';
-                cardImg.style.transform = 'translateX(150%) rotate(15deg)';
+                cardImg.style.transform = 'translateY(150%)';
                 cardImg.style.opacity = '0';
 
                 // 強制瀏覽器重新渲染
                 cardImg.offsetHeight;
 
-                // 恢復動畫效果並滑入中央
+                // 恢復動畫效果並由下方滑入中央
                 cardImg.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
                 cardImg.style.transform = 'none';
                 cardImg.style.opacity = '1';
-                cardImg.classList.remove('swipe-left');
+                cardImg.classList.remove('swipe-up');
             }, 300);
         }
 
         // --- 方案 A：點擊右下角隱形按鈕切換模式 ---
         secretTrigger.addEventListener('click', (e) => {
-            e.stopPropagation(); // 阻止觸發全螢幕的點擊事件
+            e.stopPropagation(); 
             isAudienceMode = !isAudienceMode;
-            
-            // 暗號切換 (M 代表隨機，A 代表公式)
             statusIndicator.textContent = isAudienceMode ? "A" : "M";
         });
 
-        // --- 行動裝置滑動偵測 (向左滑) ---
-        let touchStartX = 0;
-        let touchEndX = 0;
+        // --- 行動裝置滑動偵測 (向上滑) ---
+        let touchStartY = 0;
+        let touchEndY = 0;
 
         document.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
         }, false);
 
         document.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            if (touchStartX - touchEndX > 50) { // 向左滑動超過 50 像素
+            touchEndY = e.changedTouches[0].screenY;
+            // 偵測向上滑動 (往上滑時，結束座標的 Y 會小於開始座標的 Y)
+            if (touchStartY - touchEndY > 50) { 
                 handleSwipe();
             }
         }, false);
 
-        // 電腦版測試支援：點擊畫面任何地方（除右下角按鈕）等於向左滑
+        // 電腦版測試支援：點擊畫面任何地方（除右下角按鈕）等於向上滑
         document.body.addEventListener('click', (e) => {
             if(e.target.id !== 'secret-trigger') {
                 handleSwipe();
