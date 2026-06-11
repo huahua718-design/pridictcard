@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Slide From Right</title>
+    <title>Card Randomizer AI - Mirror Corrected</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -27,7 +27,6 @@
             position: relative;
         }
         
-        /* 全螢幕背景鏡頭 */
         #webcam {
             position: absolute;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -38,7 +37,6 @@
             transition: opacity 0.3s ease;
         }
 
-        /* 撲克牌容器 */
         .card-container {
             width: 180px;
             aspect-ratio: 2.5 / 3.5;
@@ -53,13 +51,12 @@
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.6);
             position: absolute;
-            /* 預設的滑動動畫曲線 */
             transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.3s ease;
             transform: translateX(0) rotate(0deg);
             opacity: 1;
         }
         
-        /* 舊卡片飛出左側 */
+        /* 舊卡片飛出物理左側 */
         .swipe-left-out {
             transform: translateX(-180%) rotate(-15deg) !important;
             opacity: 0 !important;
@@ -201,43 +198,41 @@
             }
         }
 
-        // 🥇 核心優化：確保新卡片「一定從右側外面滑入中央」
+        // 🥇 核心修正：對抗鏡像錯覺的滑動調度
         function handleSwipe() {
             if (isAnimating || isLocked) return;
             isAnimating = true;
 
-            // 1. 舊卡片滑向左側外面
+            // 1. 舊卡片滑向物理左側外面（順應鏡像畫面中的向左揮動）
             cardImg.classList.add('swipe-left-out');
 
-            // 2. 舊卡片滑出螢幕（耗時 250ms）後
+            // 2. 舊卡片滑出（耗時 250ms）後
             setTimeout(() => {
                 getNextCard();
                 
-                // 🛑 瞬間關閉過渡動畫，把卡片放到「右側外面預備位置」並偷偷換圖
+                // 🛑 修正：關閉過渡動畫，把新牌放到物理左側更深處 (-180%)，並稍微順時針旋轉
+                // 這樣在鏡像畫面上，新牌等一下看起來才會是從「畫面右側（觀眾的右手邊）」滑入！
                 cardImg.style.transition = 'none';
-                cardImg.style.transform = 'translateX(180%) rotate(15deg)';
+                cardImg.style.transform = 'translateX(-180%) rotate(15deg)';
                 cardImg.style.opacity = '0';
                 
                 updateCardDOM(currentSuitIndex, currentNum);
 
-                // 強制瀏覽器重繪 (Reflow)，確認右側定位
+                // 強制重繪
                 cardImg.offsetHeight;
 
-                // 3. 💡 使用雙重 requestAnimationFrame（或微延時），確保瀏覽器確實把卡片「放在右側」後，才開啟滑入動畫
+                // 3. 讓新卡片從物理左側，向右滑入（translateX 0%）回到正中央
                 setTimeout(() => {
-                    // 移除左滑標籤
                     cardImg.classList.remove('swipe-left-out');
                     
-                    // 重新恢復滑入動畫屬性
+                    // 恢復滑入過渡動畫
                     cardImg.style.transition = 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.25s ease-out';
                     
-                    // 讓它從右側 (180%) 絲滑地滑向正中央 (0%)
                     cardImg.style.transform = 'translateX(0) rotate(0deg)';
                     cardImg.style.opacity = '1';
                     
-                    // 動態完全結束後解鎖
                     setTimeout(() => { isAnimating = false; }, 350);
-                }, 20); // 給瀏覽器 20 毫秒的空檔抓取右側初使座標，保證看得到滑行過程！
+                }, 20); 
             }, 250); 
         }
 
