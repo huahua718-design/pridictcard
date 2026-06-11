@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Perfect Center & Hold</title>
+    <title>Card Randomizer AI - Palm Freeze</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -30,10 +30,7 @@
         /* 全螢幕背景鏡頭 */
         #webcam {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
+            top: 0; left: 0; width: 100vw; height: 100vh;
             object-fit: cover;
             transform: scaleX(-1);
             z-index: 1;
@@ -66,7 +63,7 @@
             opacity: 0 !important;
         }
 
-        /* 🔒 蓄力/鎖定成功時的發光特效 */
+        /* 🔒 鎖定成功的發光特效 */
         .card-locked {
             box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
@@ -102,10 +99,7 @@
         /* 全螢幕靜態定格照片層 */
         #freeze-view {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
+            top: 0; left: 0; width: 100vw; height: 100vh;
             object-fit: cover;
             z-index: 9998;
             display: none;
@@ -158,9 +152,9 @@
         let isCountingDown = false;
         let localStream = null; 
 
-        // ⏱️ 新增：用來記錄方框手勢開始維持的時間戳記
+        // ⏱️ 蓄力計時：改為 1000 毫秒 (1秒)
         let gestureStartTime = null; 
-        const HOLD_DURATION = 2000; // 需要維持的時間（2000毫秒 = 2秒）
+        const HOLD_DURATION = 1000; 
 
         const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
@@ -233,12 +227,10 @@
             }, 300);
         }
 
-        // 🔒 真正啟動倒數（此時已確認手勢站滿 2 秒）
         function startLockAndCapture() {
             if (isCountingDown) return;
             isCountingDown = true;
             
-            // 倒數時卡片給予亮綠光提示
             cardImg.classList.add('card-locked'); 
 
             let count = 3;
@@ -257,7 +249,6 @@
             }, 1000);
         }
 
-        // 📸 絕對幾何正中央拍照
         function freezeAndCapture() {
             flashEl.classList.add('flash-active');
             setTimeout(() => { flashEl.classList.remove('flash-active'); }, 400);
@@ -313,7 +304,7 @@
             isAudienceMode = !isAudienceMode;
             isLocked = false;
             isCountingDown = false;
-            gestureStartTime = null; // 重置時間
+            gestureStartTime = null; 
             cardImg.classList.remove('card-locked');
             countdownEl.style.display = 'none';
             freezeView.style.display = 'none'; 
@@ -326,68 +317,63 @@
         });
 
         // ==========================================
-        // AI 雙手方框與「2秒連續蓄力」偵測
+        // 🚀 AI 開掌手勢與 1秒連續定格偵測
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
-        function checkIsLSign(hand) {
-            const isIndexUp = hand[8].y < hand[6].y;   
-            const isMiddleDown = hand[12].y > hand[10].y; 
-            const isRingDown = hand[16].y > hand[14].y;   
-            const isPinkyDown = hand[20].y > hand[18].y;  
-            return (isIndexUp && isMiddleDown && isRingDown && isPinkyDown);
+        // 偵測單手是否為「張開的手掌」(Open Palm)
+        // 邏輯：五隻手指的指尖(4, 8, 12, 16, 20)高度皆高於其對應的第二關節
+        function checkIsOpenPalm(hand) {
+            const isThumbOpen = hand[4].x !== hand[3].x; // 大拇指張開
+            const isIndexUp = hand[8].y < hand[6].y;     // 食指伸直
+            const isMiddleUp = hand[12].y < hand[10].y;   // 中指伸直
+            const isRingUp = hand[16].y < hand[14].y;     // 無名指伸直
+            const isPinkyUp = hand[20].y < hand[18].y;    // 小指伸直
+            
+            return (isIndexUp && isMiddleUp && isRingUp && isPinkyUp);
         }
 
         function onResults(results) {
-            if (!results.multiHandLandmarks) {
-                gestureStartTime = null; // 沒抓到手，立刻重置時間
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                gestureStartTime = null; // 畫面上沒手，重置鎖定計時
+                lastBaseX = null;
                 return;
             }
-            const handsCount = results.multiHandLandmarks.length;
 
-            // 1. 檢查雙手方框
-            if (handsCount === 2) {
-                const hand1 = results.multiHandLandmarks[0];
-                const hand2 = results.multiHandLandmarks[1];
-                
-                if (checkIsLSign(hand1) && checkIsLSign(hand2)) {
-                    // 如果是剛進入方框手勢，記錄當下時間
-                    if (gestureStartTime === null) {
-                        gestureStartTime = Date.now();
-                    } else {
-                        // 如果手勢持續存在，檢查是否滿 2 秒
-                        const elapsed = Date.now() - gestureStartTime;
-                        if (elapsed >= HOLD_DURATION && !isLocked) {
-                            isLocked = true; // 正式鎖定
-                            startLockAndCapture(); // 觸發 3 秒倒數拍照
-                        }
+            // 只需要追蹤畫面上第一隻被偵測到的手
+            const hand = results.multiHandLandmarks[0];
+
+            // 1. 優先檢查是否比出「開掌手勢」
+            if (checkIsOpenPalm(hand)) {
+                if (gestureStartTime === null) {
+                    gestureStartTime = Date.now(); // 開始計算定格時間
+                } else {
+                    const elapsed = Date.now() - gestureStartTime;
+                    if (elapsed >= HOLD_DURATION && !isLocked) {
+                        isLocked = true; // 觸發鎖定
+                        startLockAndCapture(); 
                     }
-                    return; // 處於方框檢查中，不執行換牌邏輯
                 }
+                return; // 處於開掌蓄力狀態時，跳過下面的揮手換牌邏輯
             }
 
-            // 如果沒有同時比出方框，清除蓄力時間
+            // 如果手掌合起來或變成其他手勢，立刻重置蓄力計時
             gestureStartTime = null;
 
             if (isLocked) return;
 
-            // 2. 揮手換牌邏輯
-            if (handsCount > 0) {
-                const hand = results.multiHandLandmarks[0];
-                const currentBaseX = (hand[9].x + hand[12].x) / 2;
-                if (lastBaseX !== null) {
-                    const deltaX = currentBaseX - lastBaseX;
-                    if (deltaX > swipeThreshold) {
-                        handleSwipe();
-                        lastBaseX = null; 
-                        return;
-                    }
+            // 2. 揮手換牌邏輯（當手部不是完全張開定格時，正常執行向左揮手換牌）
+            const currentBaseX = (hand[9].x + hand[12].x) / 2;
+            if (lastBaseX !== null) {
+                const deltaX = currentBaseX - lastBaseX;
+                if (deltaX > swipeThreshold) {
+                    handleSwipe();
+                    lastBaseX = null; 
+                    return;
                 }
-                lastBaseX = currentBaseX;
-            } else {
-                lastBaseX = null;
             }
+            lastBaseX = currentBaseX;
         }
 
         const hands = new Hands({
@@ -395,7 +381,7 @@
         });
 
         hands.setOptions({
-            maxNumHands: 2, 
+            maxNumHands: 1, // 💡 改回 1：單手操作最敏銳、最不會產生辨識衝突
             modelComplexity: 0, 
             minDetectionConfidence: 0.3, 
             minTrackingConfidence: 0.3
