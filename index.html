@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Absolute Center</title>
+    <title>Card Randomizer AI - Perfect Center & Hold</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -41,7 +41,7 @@
             transition: opacity 0.3s ease;
         }
 
-        /* 撲克牌容器（死死固定在畫面幾何正中央） */
+        /* 撲克牌容器 */
         .card-container {
             width: 180px;
             aspect-ratio: 2.5 / 3.5;
@@ -66,6 +66,7 @@
             opacity: 0 !important;
         }
 
+        /* 🔒 蓄力/鎖定成功時的發光特效 */
         .card-locked {
             box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
@@ -98,7 +99,7 @@
             100% { opacity: 0; }
         }
 
-        /* 📸 全螢幕靜態定格照片層 */
+        /* 全螢幕靜態定格照片層 */
         #freeze-view {
             position: fixed;
             top: 0;
@@ -156,6 +157,10 @@
         let isLocked = false; 
         let isCountingDown = false;
         let localStream = null; 
+
+        // ⏱️ 新增：用來記錄方框手勢開始維持的時間戳記
+        let gestureStartTime = null; 
+        const HOLD_DURATION = 2000; // 需要維持的時間（2000毫秒 = 2秒）
 
         const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
@@ -228,11 +233,12 @@
             }, 300);
         }
 
+        // 🔒 真正啟動倒數（此時已確認手勢站滿 2 秒）
         function startLockAndCapture() {
-            if (isLocked || isCountingDown) return;
+            if (isCountingDown) return;
             isCountingDown = true;
-            isLocked = true;
             
+            // 倒數時卡片給予亮綠光提示
             cardImg.classList.add('card-locked'); 
 
             let count = 3;
@@ -251,7 +257,7 @@
             }, 1000);
         }
 
-        // 📸 幾何絕對正中央對齊邏輯
+        // 📸 絕對幾何正中央拍照
         function freezeAndCapture() {
             flashEl.classList.add('flash-active');
             setTimeout(() => { flashEl.classList.remove('flash-active'); }, 400);
@@ -264,7 +270,6 @@
             canvas.width = screenWidth;
             canvas.height = screenHeight;
 
-            // 1. 計算相機畫面在 Cover 模式下的裁切
             const vWidth = videoElement.videoWidth;
             const vHeight = videoElement.videoHeight;
             
@@ -274,34 +279,27 @@
             let sx = (vWidth - sw) / 2;
             let sy = (vHeight - sh) / 2;
 
-            // 2. 繪製鏡像相機背景
             ctx.translate(screenWidth, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(videoElement, sx, sy, sw, sh, 0, 0, screenWidth, screenHeight);
             ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
-            // 3. 🥇 終極修正：直接使用純幾何數學，強制將撲克牌繪製在 Canvas 的「絕對正中央」
-            // 這樣可以完全繞開網頁元素因狀態列或網址列產生的物理位置偏差
             const rect = cardContainer.getBoundingClientRect();
-            const cardWidth = rect.width;   // 保持網頁上的原始撲克牌寬度 (180px)
-            const cardHeight = rect.height; // 保持網頁上的原始撲克牌高度
+            const cardWidth = rect.width;   
+            const cardHeight = rect.height; 
 
-            // 算中央點：(總寬度 - 卡片寬) / 2
             const targetX = (screenWidth - cardWidth) / 2;
             const targetY = (screenHeight - cardHeight) / 2;
 
             const pImage = new Image();
             pImage.src = cardImg.src;
             pImage.onload = function() {
-                // 強制在絕對幾何正中央烙印撲克牌
                 ctx.drawImage(pImage, targetX, targetY, cardWidth, cardHeight);
 
-                // 4. 覆蓋全螢幕靜態圖
                 const dataURL = canvas.toDataURL('image/png');
                 freezeView.src = dataURL;
                 freezeView.style.display = 'block'; 
 
-                // 5. 關閉相機鏡頭
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
                 }
@@ -315,6 +313,7 @@
             isAudienceMode = !isAudienceMode;
             isLocked = false;
             isCountingDown = false;
+            gestureStartTime = null; // 重置時間
             cardImg.classList.remove('card-locked');
             countdownEl.style.display = 'none';
             freezeView.style.display = 'none'; 
@@ -327,7 +326,7 @@
         });
 
         // ==========================================
-        // AI 雙手方框偵測
+        // AI 雙手方框與「2秒連續蓄力」偵測
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
@@ -341,20 +340,39 @@
         }
 
         function onResults(results) {
-            if (!results.multiHandLandmarks) return;
+            if (!results.multiHandLandmarks) {
+                gestureStartTime = null; // 沒抓到手，立刻重置時間
+                return;
+            }
             const handsCount = results.multiHandLandmarks.length;
 
+            // 1. 檢查雙手方框
             if (handsCount === 2) {
                 const hand1 = results.multiHandLandmarks[0];
                 const hand2 = results.multiHandLandmarks[1];
+                
                 if (checkIsLSign(hand1) && checkIsLSign(hand2)) {
-                    startLockAndCapture();
-                    return;
+                    // 如果是剛進入方框手勢，記錄當下時間
+                    if (gestureStartTime === null) {
+                        gestureStartTime = Date.now();
+                    } else {
+                        // 如果手勢持續存在，檢查是否滿 2 秒
+                        const elapsed = Date.now() - gestureStartTime;
+                        if (elapsed >= HOLD_DURATION && !isLocked) {
+                            isLocked = true; // 正式鎖定
+                            startLockAndCapture(); // 觸發 3 秒倒數拍照
+                        }
+                    }
+                    return; // 處於方框檢查中，不執行換牌邏輯
                 }
             }
 
+            // 如果沒有同時比出方框，清除蓄力時間
+            gestureStartTime = null;
+
             if (isLocked) return;
 
+            // 2. 揮手換牌邏輯
             if (handsCount > 0) {
                 const hand = results.multiHandLandmarks[0];
                 const currentBaseX = (hand[9].x + hand[12].x) / 2;
