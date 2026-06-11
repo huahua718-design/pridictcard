@@ -25,7 +25,7 @@
         .card-container {
             width: 85vw;
             max-width: 320px;
-            aspect-ratio: 2.5 / 3.5; /* 標準撲克牌比例 */
+            aspect-ratio: 2.5 / 3.5;
             perspective: 1000px;
             position: relative;
         }
@@ -39,19 +39,19 @@
             position: absolute;
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
-        /* 向上滑出動畫效果 */
+        /* 向上滑出動畫 */
         .swipe-up {
             transform: translateY(-150%) rotate(-5deg);
             opacity: 0;
         }
-        /* 方案 A：右下角隱形按鈕 */
+        /* 右下角隱形按鈕 */
         #secret-trigger {
             position: fixed;
             right: 0;
             bottom: 0;
             width: 65px;
             height: 65px;
-            background-color: transparent; /* 完全透明 */
+            background-color: transparent;
             z-index: 9999;
             cursor: pointer;
         }
@@ -62,7 +62,7 @@
             left: 15px;
             font-size: 14px;
             font-weight: bold;
-            color: #262626; /* 與背景極度接近，正面看幾乎隱形 */
+            color: #222222; 
             pointer-events: none;
         }
     </style>
@@ -78,33 +78,51 @@
     <div id="secret-trigger"></div>
 
     <script>
-        // 1. 嚴格對應你的花色命名與順序：黑桃(0) -> 方塊(1) -> 梅花(2) -> 紅心(3)
         const suits = ['spade', 'diamond', 'club', 'heart'];
-        
-        // 2. 嚴格對應你的點數命名規則
         const numLabels = {
             1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7',
             8: '8', 9: '9', 10: '10', 11: 'jack', 12: 'queen', 13: 'king'
         };
 
-        // 當前卡片狀態
         let currentSuitIndex = 0; 
         let currentNum = 1;      
-        let isAudienceMode = false; // 預設為魔術師隨機模式
+        let isAudienceMode = false;
 
-        // DOM 元素
         const cardImg = document.getElementById('poker-card');
         const secretTrigger = document.getElementById('secret-trigger');
         const statusIndicator = document.getElementById('status-indicator');
 
-        // 3. 自動生成圖片路徑的函式
-        function getCardImagePath(suitIdx, num) {
-            const suitName = suits[suitIdx];
-            const numName = numLabels[num];
-            return `./cards/${suitName}_${numName}.png`;
+        // 瀏覽器音訊產生器（免外部音效檔）
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // 播放「卡片切換」的短促清脆音效
+        function playTickSound() {
+            // 如果音訊被瀏覽器暫停（安全限制），則重啟
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'triangle'; 
+            osc.frequency.setValueAtTime(120, audioCtx.currentTime); // 低頻爆破感
+            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.04); // 快速拉高變成清脆聲
+            
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05); // 快速淡出
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
         }
 
-        // 4. 自動預載 52 張牌
+        function getCardImagePath(suitIdx, num) {
+            return `./cards/${suits[suitIdx]}_${numLabels[num]}.png`;
+        }
+
         function preloadImages() {
             for (let s = 0; s < 4; s++) {
                 for (let n = 1; n <= 13; n++) {
@@ -112,22 +130,16 @@
                     img.src = getCardImagePath(s, n);
                 }
             }
-            const joker = new Image();
-            joker.src = './cards/joker_black.png';
         }
         preloadImages();
 
-        // 5. 更新卡片圖片路徑
         function updateCardDOM(suitIdx, num) {
             cardImg.src = getCardImagePath(suitIdx, num);
         }
 
-        // 6. 核心魔術演算法（包含防重複與加 5 邏輯）
         function getNextCard() {
             if (!isAudienceMode) {
-                // 【魔術師模式】真隨機（確保不會連續抽到同一張牌）
                 let nextSuitIndex, nextNum;
-                
                 do {
                     nextSuitIndex = Math.floor(Math.random() * 4);
                     nextNum = Math.floor(Math.random() * 13) + 1;
@@ -135,11 +147,8 @@
                 
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
-                
             } else {
-                // 【觀眾模式】固定公式
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
-                
                 currentNum = currentNum + 5;
                 if (currentNum > 13) {
                     currentNum = currentNum - 13;
@@ -147,24 +156,23 @@
             }
         }
 
-        // 7. 向上滑動動畫處理
+        // 向上滑動動畫處理
         function handleSwipe() {
             cardImg.classList.add('swipe-up');
+            
+            // 觸發音效暗號（魔術師用聽的數張數）
+            playTickSound();
 
             setTimeout(() => {
-                // 在卡片飛出螢幕外時換圖
                 getNextCard();
                 updateCardDOM(currentSuitIndex, currentNum);
 
-                // 瞬間將新卡片藏到下方畫面外 (無動畫)
                 cardImg.style.transition = 'none';
                 cardImg.style.transform = 'translateY(150%)';
                 cardImg.style.opacity = '0';
 
-                // 強制瀏覽器重新渲染
-                cardImg.offsetHeight;
+                cardImg.offsetHeight; // 強制重繪
 
-                // 恢復動畫效果並由下方滑入中央
                 cardImg.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
                 cardImg.style.transform = 'none';
                 cardImg.style.opacity = '1';
@@ -177,9 +185,14 @@
             e.stopPropagation(); 
             isAudienceMode = !isAudienceMode;
             statusIndicator.textContent = isAudienceMode ? "A" : "M";
+            
+            // 激活音訊上下文（因為多數手機瀏覽器要求使用者互動後才能發聲）
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
         });
 
-        // --- 行動裝置滑動偵測 (向上滑) ---
+        // --- 嚴格限制：只有向上滑動才能換牌 ---
         let touchStartY = 0;
         let touchEndY = 0;
 
@@ -189,20 +202,12 @@
 
         document.addEventListener('touchend', (e) => {
             touchEndY = e.changedTouches[0].screenY;
-            // 偵測向上滑動 (往上滑時，結束座標的 Y 會小於開始座標的 Y)
             if (touchStartY - touchEndY > 50) { 
                 handleSwipe();
             }
         }, false);
 
-        // 電腦版測試支援：點擊畫面任何地方（除右下角按鈕）等於向上滑
-        document.body.addEventListener('click', (e) => {
-            if(e.target.id !== 'secret-trigger') {
-                handleSwipe();
-            }
-        });
-
-        // 網頁初始隨機挑選第一張顯示的牌
+        // 初始隨機第一張牌
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
