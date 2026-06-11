@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Palm Freeze</title>
+    <title>Card Randomizer AI - Palm Freeze 2s</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -152,9 +152,9 @@
         let isCountingDown = false;
         let localStream = null; 
 
-        // ⏱️ 蓄力計時：改為 1000 毫秒 (1秒)
+        // ⏱️ 蓄力計時：修正為 2000 毫秒 (2秒)，提升穩定度防止誤判
         let gestureStartTime = null; 
-        const HOLD_DURATION = 1000; 
+        const HOLD_DURATION = 2000; 
 
         const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
@@ -275,17 +275,13 @@
             ctx.drawImage(videoElement, sx, sy, sw, sh, 0, 0, screenWidth, screenHeight);
             ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
-            const rect = cardContainer.getBoundingClientRect();
-            const cardWidth = rect.width;   
-            const cardHeight = rect.height; 
-
-            const targetX = (screenWidth - cardWidth) / 2;
-            const targetY = (screenHeight - cardHeight) / 2;
+            const targetX = (screenWidth - 180) / 2;
+            const targetY = (screenHeight - 252) / 2;
 
             const pImage = new Image();
             pImage.src = cardImg.src;
             pImage.onload = function() {
-                ctx.drawImage(pImage, targetX, targetY, cardWidth, cardHeight);
+                ctx.drawImage(pImage, targetX, targetY, 180, 252);
 
                 const dataURL = canvas.toDataURL('image/png');
                 freezeView.src = dataURL;
@@ -317,53 +313,49 @@
         });
 
         // ==========================================
-        // 🚀 AI 開掌手勢與 1秒連續定格偵測
+        // 🚀 AI 開掌手勢偵測 Logic
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
-        // 偵測單手是否為「張開的手掌」(Open Palm)
-        // 邏輯：五隻手指的指尖(4, 8, 12, 16, 20)高度皆高於其對應的第二關節
+        // 偵測單手是否為完全「張開的手掌」
         function checkIsOpenPalm(hand) {
-            const isThumbOpen = hand[4].x !== hand[3].x; // 大拇指張開
-            const isIndexUp = hand[8].y < hand[6].y;     // 食指伸直
-            const isMiddleUp = hand[12].y < hand[10].y;   // 中指伸直
-            const isRingUp = hand[16].y < hand[14].y;     // 無名指伸直
-            const isPinkyUp = hand[20].y < hand[18].y;    // 小指伸直
-            
+            const isIndexUp = hand[8].y < hand[6].y;     
+            const isMiddleUp = hand[12].y < hand[10].y;   
+            const isRingUp = hand[16].y < hand[14].y;     
+            const isPinkyUp = hand[20].y < hand[18].y;    
             return (isIndexUp && isMiddleUp && isRingUp && isPinkyUp);
         }
 
         function onResults(results) {
             if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-                gestureStartTime = null; // 畫面上沒手，重置鎖定計時
+                gestureStartTime = null; 
                 lastBaseX = null;
                 return;
             }
 
-            // 只需要追蹤畫面上第一隻被偵測到的手
             const hand = results.multiHandLandmarks[0];
 
-            // 1. 優先檢查是否比出「開掌手勢」
+            // 1. 偵測開掌定格
             if (checkIsOpenPalm(hand)) {
                 if (gestureStartTime === null) {
-                    gestureStartTime = Date.now(); // 開始計算定格時間
+                    gestureStartTime = Date.now(); // 開始計時連續開掌時間
                 } else {
                     const elapsed = Date.now() - gestureStartTime;
+                    // 如果手掌合起來或變成其他手勢，立刻重置蓄力計時
                     if (elapsed >= HOLD_DURATION && !isLocked) {
-                        isLocked = true; // 觸發鎖定
+                        isLocked = true; 
                         startLockAndCapture(); 
                     }
                 }
-                return; // 處於開掌蓄力狀態時，跳過下面的揮手換牌邏輯
+                return; // 處於開掌蓄力狀態時，跳過揮手換牌邏輯
             }
 
-            // 如果手掌合起來或變成其他手勢，立刻重置蓄力計時
             gestureStartTime = null;
 
             if (isLocked) return;
 
-            // 2. 揮手換牌邏輯（當手部不是完全張開定格時，正常執行向左揮手換牌）
+            // 2. 揮手換牌邏輯
             const currentBaseX = (hand[9].x + hand[12].x) / 2;
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
@@ -381,7 +373,7 @@
         });
 
         hands.setOptions({
-            maxNumHands: 1, // 💡 改回 1：單手操作最敏銳、最不會產生辨識衝突
+            maxNumHands: 1, 
             modelComplexity: 0, 
             minDetectionConfidence: 0.3, 
             minTrackingConfidence: 0.3
