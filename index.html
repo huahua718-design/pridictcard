@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Perfect Version</title>
+    <title>Card Randomizer AI - Camera Edition</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -27,29 +27,27 @@
             position: relative;
         }
         
-        /* 🎥 1. 鏡頭畫面全螢幕背景化 */
+        /* 全螢幕背景鏡頭 */
         #webcam {
             position: absolute;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
-            object-fit: cover; /* 鋪滿全螢幕 */
+            object-fit: cover;
             transform: scaleX(-1); /* 鏡像翻轉 */
-            z-index: 1; /* 放在最底層 */
-            
-            /* 💡 表演提示：練習時用 0.3 方便看範圍，正式表演請改成 0 徹底隱形 */
-            opacity: 0.3; 
+            z-index: 1;
+            opacity: 0.4; /* 💡 表演時請改成 0 徹底隱形 */
             transition: opacity 0.3s ease;
         }
 
-        /* 🃏 2. 撲克牌容器與「向左滑動」動效 */
+        /* 撲克牌容器 */
         .card-container {
             width: 180px;
             aspect-ratio: 2.5 / 3.5;
             perspective: 1000px;
             position: relative;
-            z-index: 10; /* 確保在相機背景上方 */
+            z-index: 10;
         }
         .card-img {
             width: 100%;
@@ -58,25 +56,56 @@
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.6);
             position: absolute;
-            /* 將 transition 拆開，方便單獨控製圖片更換時不要有殘影 */
-            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out, box-shadow 0.3s ease;
             transform: translateX(0) rotate(0deg);
             opacity: 1;
         }
         
-        /* 卡片向左飛出螢幕外 */
+        /* 卡片向左飛出 */
         .swipe-left-out {
             transform: translateX(-160%) rotate(-10deg) !important;
             opacity: 0 !important;
         }
 
+        /* 🔒 鎖定發光特效 */
+        .card-locked {
+            box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
+        }
+
+        /* ⏱️ 倒數計時大數字 */
+        #countdown {
+            position: fixed;
+            top: 30%;
+            font-size: 120px;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+            z-index: 100;
+            display: none;
+            pointer-events: none;
+        }
+
+        /* 📸 快門閃光燈效果 */
+        #shutter-flash {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: white;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .flash-active {
+            animation: flash-anim 0.4s ease-out;
+        }
+        @keyframes flash-anim {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
         /* 右下角隱形按鈕 */
         #secret-trigger {
             position: fixed;
-            right: 0;
-            bottom: 0;
-            width: 65px;
-            height: 65px;
+            right: 0; bottom: 0; width: 65px; height: 65px;
             background-color: transparent;
             z-index: 9999;
             cursor: pointer;
@@ -84,19 +113,16 @@
         /* 狀態指示燈 */
         #status-indicator {
             position: fixed;
-            top: 15px;
-            left: 15px;
-            font-size: 14px;
-            font-weight: bold;
-            color: #444444; 
-            pointer-events: none;
-            z-index: 100;
+            top: 15px; left: 15px; font-size: 14px; font-weight: bold;
+            color: #444444; pointer-events: none; z-index: 100;
         }
     </style>
 </head>
 <body>
 
     <div id="status-indicator">M</div>
+    <div id="countdown">3</div>
+    <div id="shutter-flash"></div>
     
     <video id="webcam" autoplay playsinline></video>
 
@@ -117,11 +143,15 @@
         let currentNum = 1;      
         let isAudienceMode = false;
         let isAnimating = false;
+        let isLocked = false; 
+        let isCountingDown = false; // 是否正在倒數中
 
         const cardImg = document.getElementById('poker-card');
         const secretTrigger = document.getElementById('secret-trigger');
         const statusIndicator = document.getElementById('status-indicator');
         const videoElement = document.getElementById('webcam');
+        const countdownEl = document.getElementById('countdown');
+        const flashEl = document.getElementById('shutter-flash');
 
         function getCardImagePath(suitIdx, num) {
             return `./cards/${suits[suitIdx]}_${numLabels[num]}.png`;
@@ -160,73 +190,160 @@
             }
         }
 
-        // 🎬 3. 優化後的向左滑動換牌動畫（解決變牌時間差）
         function handleSwipe() {
-            if (isAnimating) return;
+            if (isAnimating || isLocked) return;
             isAnimating = true;
 
-            // 步驟一：舊卡片往左飛出
             cardImg.classList.add('swipe-left-out');
 
             setTimeout(() => {
-                // 步驟二：在畫面外計算新牌，並「立刻換圖」
                 getNextCard();
                 updateCardDOM(currentSuitIndex, currentNum);
 
-                // 步驟三：關閉動畫效果，瞬間把新卡片移到「右邊畫面外」準備進入
                 cardImg.style.transition = 'none';
                 cardImg.style.transform = 'translateX(160%) rotate(10deg)';
                 cardImg.style.opacity = '0';
                 cardImg.classList.remove('swipe-left-out');
 
-                // 強制瀏覽器重繪，確保上述「右移」動作已完成
                 cardImg.offsetHeight;
 
-                // 步驟四：恢復動畫，讓新卡片從右邊帥氣滑入中央就位
                 cardImg.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
                 cardImg.style.transform = 'translateX(0) rotate(0deg)';
                 cardImg.style.opacity = '1';
                 
-                // 動畫完全結束後解鎖
                 setTimeout(() => { isAnimating = false; }, 300);
-            }, 300); // 飛出所需的時間
+            }, 300);
+        }
+
+        // 🔒 觸發「雙手方框」後的鎖定與倒數拍照
+        function startLockAndCapture() {
+            if (isLocked || isCountingDown) return;
+            isCountingDown = true;
+            isLocked = true;
+            
+            cardImg.classList.add('card-locked'); 
+
+            // 開始 3 秒倒數
+            let count = 3;
+            countdownEl.textContent = count;
+            countdownEl.style.display = 'block';
+
+            let timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.textContent = count;
+                } else {
+                    clearInterval(timer);
+                    countdownEl.style.display = 'none';
+                    takePhoto(); // 倒數結束，執行拍照
+                }
+            }, 1000);
+        }
+
+        // 📸 Canvas 截圖合成核心（拍照）
+        function takePhoto() {
+            // 觸發閃光燈動畫
+            flashEl.classList.add('flash-active');
+            setTimeout(() => { flashEl.classList.remove('flash-active'); }, 400);
+
+            // 建立畫布
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // 設置與視訊流相同的解析度
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+
+            // 1. 繪製相機背景（因為網頁是鏡像的，這裡拍照也要做鏡像翻轉才會與螢幕一致）
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // 重置矩陣
+
+            // 2. 計算撲克牌在照片中的縮放與對應位置（放在正中央偏下）
+            const cardAspect = 2.5 / 3.5;
+            const photoCardWidth = canvas.width * 0.35; // 撲克牌佔照片寬度的 35%
+            const photoCardHeight = photoCardWidth / cardAspect;
+            const cardX = (canvas.width - photoCardWidth) / 2;
+            const cardY = (canvas.height - photoCardHeight) * 0.75; // 靠下方 75% 處
+
+            // 3. 將當前顯示的撲克牌圖片繪製疊加到照片上
+            const pImage = new Image();
+            pImage.src = cardImg.src;
+            pImage.onload = function() {
+                ctx.drawImage(pImage, cardX, cardY, photoCardWidth, photoCardHeight);
+
+                // 4. 自動下載存檔到手機/電腦
+                const dataURL = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = `magic_capture_${Date.now()}.png`;
+                link.href = dataURL;
+                link.click();
+                
+                isCountingDown = false; // 解除倒數狀態
+            };
         }
 
         secretTrigger.addEventListener('click', (e) => {
             e.stopPropagation(); 
             isAudienceMode = !isAudienceMode;
-            statusIndicator.textContent = isAudienceMode ? "A" : "M";
+            isLocked = false;
+            isCountingDown = false;
+            cardImg.classList.remove('card-locked');
+            countdownEl.style.display = 'none';
+            statusIndicator.textContent = isAudienceMode ? "" : "M";
         });
 
         // ==========================================
-        // 🚀修正鏡像後的「向左揮手」AI 邏輯
+        // 🚀 AI 雙手方框與揮手手勢偵測
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
+        // 偵測單隻手是否比出「L型 / 槍型」（即食指、大拇指伸直，其餘三指彎曲）
+        function checkIsLSign(hand) {
+            const isThumbUp = hand[4].x !== hand[3].x; // 大拇指張開
+            const isIndexUp = hand[8].y < hand[6].y;   // 食指伸直
+            const isMiddleDown = hand[12].y > hand[10].y; // 中指彎曲
+            const isRingDown = hand[16].y > hand[14].y;   // 無名指彎曲
+            const isPinkyDown = hand[20].y > hand[18].y;  // 小指彎曲
+
+            return (isIndexUp && isMiddleDown && isRingDown && isPinkyDown);
+        }
+
         function onResults(results) {
-            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-                lastBaseX = null;
-                return;
-            }
+            if (!results.multiHandLandmarks) return;
+            const handsCount = results.multiHandLandmarks.length;
 
-            const hand = results.multiHandLandmarks[0];
-            const currentBaseX = (hand[9].x + hand[12].x) / 2;
-
-            if (lastBaseX !== null) {
-                const deltaX = currentBaseX - lastBaseX;
-
-                // 💡 關鍵修正：
-                // 在全螢幕背景與鏡像 scaleX(-1) 下，觀眾肉眼「向左揮手」
-                // 實測對應到鏡頭原始座標的數值是「增加」的（deltaX > 0）
-                if (deltaX > swipeThreshold) {
-                    handleSwipe();
-                    lastBaseX = null; 
+            // 1. 偵測雙手比方框（必須畫面同時有兩隻手，且兩隻手都比出大拇指與食指）
+            if (handsCount === 2) {
+                const hand1 = results.multiHandLandmarks[0];
+                const hand2 = results.multiHandLandmarks[1];
+                
+                if (checkIsLSign(hand1) && checkIsLSign(hand2)) {
+                    startLockAndCapture();
                     return;
                 }
             }
-            
-            lastBaseX = currentBaseX;
+
+            if (isLocked) return;
+
+            // 2. 揮手換牌邏輯 (由第一隻手控制)
+            if (handsCount > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const currentBaseX = (hand[9].x + hand[12].x) / 2;
+                if (lastBaseX !== null) {
+                    const deltaX = currentBaseX - lastBaseX;
+                    if (deltaX > swipeThreshold) {
+                        handleSwipe();
+                        lastBaseX = null; 
+                        return;
+                    }
+                }
+                lastBaseX = currentBaseX;
+            } else {
+                lastBaseX = null;
+            }
         }
 
         const hands = new Hands({
@@ -234,7 +351,7 @@
         });
 
         hands.setOptions({
-            maxNumHands: 1,
+            maxNumHands: 2, // 💡 修改：允許同時追蹤 2 隻手
             modelComplexity: 0, 
             minDetectionConfidence: 0.3, 
             minTrackingConfidence: 0.3
@@ -246,7 +363,7 @@
             onFrame: async () => {
                 await hands.send({ image: videoElement });
             },
-            width: 640, // 放大解析度以適應全螢幕背景追蹤
+            width: 640, 
             height: 480,
             facingMode: 'user'
         });
