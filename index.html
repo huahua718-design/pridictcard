@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer Pro</title>
+    <title>Card Randomizer AI</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
     <style>
         * {
             box-sizing: border-box;
@@ -28,6 +32,7 @@
             aspect-ratio: 2.5 / 3.5;
             perspective: 1000px;
             position: relative;
+            z-index: 10;
         }
         /* 撲克牌圖片樣式 */
         .card-img {
@@ -39,7 +44,7 @@
             position: absolute;
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
-        /* 向上滑出動畫 */
+        /* 向上滑出動畫 (保留原本向上滑動的動效) */
         .swipe-up {
             transform: translateY(-150%) rotate(-5deg);
             opacity: 0;
@@ -55,7 +60,7 @@
             z-index: 9999;
             cursor: pointer;
         }
-        /* 狀態指示燈（非常暗的灰色，供魔術師肉眼識別） */
+        /* 狀態指示燈（非常暗的灰色） */
         #status-indicator {
             position: fixed;
             top: 15px;
@@ -64,12 +69,23 @@
             font-weight: bold;
             color: #222222; 
             pointer-events: none;
+            z-index: 100;
+        }
+        /* 隱藏相機畫面（魔術機關不能讓觀眾看到） */
+        #webcam {
+            position: fixed;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
     <div id="status-indicator">M</div>
+
+    <video id="webcam" autoplay playsinline></video>
 
     <div class="card-container" id="card-container">
         <img src="./cards/spade_1.png" alt="Poker Card" class="card-img" id="poker-card">
@@ -87,37 +103,12 @@
         let currentSuitIndex = 0; 
         let currentNum = 1;      
         let isAudienceMode = false;
+        let isAnimating = false; // 防止連續手勢過快導致動畫卡死
 
         const cardImg = document.getElementById('poker-card');
         const secretTrigger = document.getElementById('secret-trigger');
         const statusIndicator = document.getElementById('status-indicator');
-
-        // 瀏覽器音訊產生器（免外部音效檔）
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // 播放「卡片切換」的短促清脆音效
-        function playTickSound() {
-            // 如果音訊被瀏覽器暫停（安全限制），則重啟
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'triangle'; 
-            osc.frequency.setValueAtTime(120, audioCtx.currentTime); // 低頻爆破感
-            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.04); // 快速拉高變成清脆聲
-            
-            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05); // 快速淡出
-            
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.05);
-        }
+        const videoElement = document.getElementById('webcam');
 
         function getCardImagePath(suitIdx, num) {
             return `./cards/${suits[suitIdx]}_${numLabels[num]}.png`;
@@ -156,12 +147,12 @@
             }
         }
 
-        // 向上滑動動畫處理
+        // 動畫執行
         function handleSwipe() {
+            if (isAnimating) return;
+            isAnimating = true;
+
             cardImg.classList.add('swipe-up');
-            
-            // 觸發音效暗號（魔術師用聽的數張數）
-            playTickSound();
 
             setTimeout(() => {
                 getNextCard();
@@ -177,6 +168,8 @@
                 cardImg.style.transform = 'none';
                 cardImg.style.opacity = '1';
                 cardImg.classList.remove('swipe-up');
+                
+                setTimeout(() => { isAnimating = false; }, 300);
             }, 300);
         }
 
@@ -185,32 +178,74 @@
             e.stopPropagation(); 
             isAudienceMode = !isAudienceMode;
             statusIndicator.textContent = isAudienceMode ? "A" : "M";
-            
-            // 激活音訊上下文（因為多數手機瀏覽器要求使用者互動後才能發聲）
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
         });
-
-        // --- 嚴格限制：只有向上滑動才能換牌 ---
-        let touchStartY = 0;
-        let touchEndY = 0;
-
-        document.addEventListener('touchstart', (e) => {
-            touchStartY = e.changedTouches[0].screenY;
-        }, false);
-
-        document.addEventListener('touchend', (e) => {
-            touchEndY = e.changedTouches[0].screenY;
-            if (touchStartY - touchEndY > 50) { 
-                handleSwipe();
-            }
-        }, false);
 
         // 初始隨機第一張牌
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
+
+
+        // ==========================================
+        // 🔥 AI 隔空手勢辨識核心邏輯 (MediaPipe)
+        // ==========================================
+        
+        let lastX = null;
+        let swipeThreshold = 0.15; // 揮手判定的橫向移動距離閾值
+
+        function onResults(results) {
+            // 如果沒偵測到手，重置位置紀錄
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                lastX = null;
+                return;
+            }
+
+            // 取得第一隻手的食指指尖 (Landmark 8) 或手掌中心 (Landmark 9) 的 X 座標
+            // MediaPipe 的 X 軸是 0(左) 到 1(右)，因為前置鏡頭通常鏡像，所以向左揮 X 會變大
+            const currentX = results.multiHandLandmarks[0][9].x; 
+
+            if (lastX !== null) {
+                const deltaX = currentX - lastX;
+
+                // 偵測到手掌快速向左移動 (前置鏡頭鏡像下，肉眼向左揮，座標數值會增加)
+                if (deltaX > swipeThreshold) {
+                    handleSwipe();
+                    lastX = null; // 觸發後重置，避免單次揮手重複觸發
+                    return;
+                }
+            }
+            
+            lastX = currentX;
+        }
+
+        // 初始化 MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.4, // 調低門檻讓昏暗處更容易感應
+            minTrackingConfidence: 0.4
+        });
+
+        hands.onResults(onResults);
+
+        // 啟動前置鏡頭
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 480,
+            height: 360,
+            facingMode: 'user' // 強制使用前置鏡頭
+        });
+        
+        // 網頁載入後自動啟動相機（首次打開會跳出允許權限視窗）
+        camera.start().catch(err => {
+            console.error("相機啟動失敗，請確認是否給予瀏覽器相機權限：", err);
+        });
 
     </script>
 </body>
