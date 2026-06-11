@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Palm Freeze 2s</title>
+    <title>Card Randomizer AI - Perfect Timing</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -53,17 +53,18 @@
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.6);
             position: absolute;
-            transition: transform 0.3s ease-out, opacity 0.3s ease-out, box-shadow 0.3s ease;
+            /* 調整過渡動畫：讓滑出更輕快敏捷 */
+            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.3s ease;
             transform: translateX(0) rotate(0deg);
             opacity: 1;
         }
         
+        /* 100% 飛出左側並完全透明 */
         .swipe-left-out {
-            transform: translateX(-160%) rotate(-10deg) !important;
+            transform: translateX(-180%) rotate(-15deg) !important;
             opacity: 0 !important;
         }
 
-        /* 🔒 鎖定成功的發光特效 */
         .card-locked {
             box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
@@ -96,7 +97,6 @@
             100% { opacity: 0; }
         }
 
-        /* 全螢幕靜態定格照片層 */
         #freeze-view {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -152,7 +152,6 @@
         let isCountingDown = false;
         let localStream = null; 
 
-        // ⏱️ 蓄力計時：修正為 2000 毫秒 (2秒)，提升穩定度防止誤判
         let gestureStartTime = null; 
         const HOLD_DURATION = 2000; 
 
@@ -202,29 +201,40 @@
             }
         }
 
+        // 🥇 核心修正：完美的盲區換牌過渡動畫
         function handleSwipe() {
             if (isAnimating || isLocked) return;
             isAnimating = true;
 
+            // 1. 舊卡片瞬間大步滑向螢幕左側外面（耗時 250ms）
             cardImg.classList.add('swipe-left-out');
 
+            // 2. 當舊卡片「完全消失在左側螢幕外」之後，才觸發內部的數據與圖片更換
             setTimeout(() => {
                 getNextCard();
+                
+                // 🛑 在外面的盲區關閉過渡動畫(transition: none)，偷偷換成新牌，並瞬間移動到螢幕右側外面
+                cardImg.style.transition = 'none';
+                cardImg.style.transform = 'translateX(180%) rotate(15deg)';
+                cardImg.style.opacity = '0';
+                
+                // 秘密更換成新撲克牌的圖片路徑
                 updateCardDOM(currentSuitIndex, currentNum);
 
-                cardImg.style.transition = 'none';
-                cardImg.style.transform = 'translateX(160%) rotate(10deg)';
-                cardImg.style.opacity = '0';
-                cardImg.classList.remove('swipe-left-out');
-
+                // 強制瀏覽器重繪頁面 (Reflow)，確保上面的「無動畫位移」已經確實執行完成
                 cardImg.offsetHeight;
 
-                cardImg.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+                // 3. 重新恢復動畫屬性，讓「已經換好新臉」的撲克牌從右側絲滑地滑入正中央
+                cardImg.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
                 cardImg.style.transform = 'translateX(0) rotate(0deg)';
                 cardImg.style.opacity = '1';
                 
+                // 移除滑出標籤，以便下一次滑動
+                cardImg.classList.remove('swipe-left-out');
+                
+                // 動態完全結束後，釋放狀態鎖
                 setTimeout(() => { isAnimating = false; }, 300);
-            }, 300);
+            }, 250); // 這裡的 250ms 剛好對齊 CSS 的過渡時間，確保換牌時卡片完全在外面
         }
 
         function startLockAndCapture() {
@@ -313,12 +323,11 @@
         });
 
         // ==========================================
-        // 🚀 AI 開掌手勢偵測 Logic
+        // AI 開掌手勢偵測 Logic
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
-        // 偵測單手是否為完全「張開的手掌」
         function checkIsOpenPalm(hand) {
             const isIndexUp = hand[8].y < hand[6].y;     
             const isMiddleUp = hand[12].y < hand[10].y;   
@@ -336,26 +345,23 @@
 
             const hand = results.multiHandLandmarks[0];
 
-            // 1. 偵測開掌定格
             if (checkIsOpenPalm(hand)) {
                 if (gestureStartTime === null) {
-                    gestureStartTime = Date.now(); // 開始計時連續開掌時間
+                    gestureStartTime = Date.now(); 
                 } else {
                     const elapsed = Date.now() - gestureStartTime;
-                    // 如果手掌合起來或變成其他手勢，立刻重置蓄力計時
                     if (elapsed >= HOLD_DURATION && !isLocked) {
                         isLocked = true; 
                         startLockAndCapture(); 
                     }
                 }
-                return; // 處於開掌蓄力狀態時，跳過揮手換牌邏輯
+                return; 
             }
 
             gestureStartTime = null;
 
             if (isLocked) return;
 
-            // 2. 揮手換牌邏輯
             const currentBaseX = (hand[9].x + hand[12].x) / 2;
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
