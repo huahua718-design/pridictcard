@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Freeze Edition</title>
+    <title>Card Randomizer AI - Absolute Center</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -41,7 +41,7 @@
             transition: opacity 0.3s ease;
         }
 
-        /* 撲克牌容器 */
+        /* 撲克牌容器（死死固定在畫面幾何正中央） */
         .card-container {
             width: 180px;
             aspect-ratio: 2.5 / 3.5;
@@ -98,7 +98,7 @@
             100% { opacity: 0; }
         }
 
-        /* 📸 全螢幕靜態定格照片層（拍照後才會顯示，蓋住所有東西） */
+        /* 📸 全螢幕靜態定格照片層 */
         #freeze-view {
             position: fixed;
             top: 0;
@@ -106,9 +106,8 @@
             width: 100vw;
             height: 100vh;
             object-fit: cover;
-            z-index: 9998; /* 僅次於快門閃光 */
+            z-index: 9998;
             display: none;
-            /* 允許長按儲存照片 */
             user-select: auto !important;
             -webkit-user-select: auto !important;
         }
@@ -156,8 +155,9 @@
         let isAnimating = false;
         let isLocked = false; 
         let isCountingDown = false;
-        let localStream = null; // 用來儲存相機串流以便後續關閉
+        let localStream = null; 
 
+        const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
         const secretTrigger = document.getElementById('secret-trigger');
         const statusIndicator = document.getElementById('status-indicator');
@@ -246,50 +246,64 @@
                 } else {
                     clearInterval(timer);
                     countdownEl.style.display = 'none';
-                    freezeAndCapture(); // 執行全螢幕定格
+                    freezeAndCapture(); 
                 }
             }, 1000);
         }
 
-        // 📸 核心機關：生成截圖 -> 覆蓋全螢幕 -> 關閉前置鏡頭 -> 絕不跳出儲存提示
+        // 📸 幾何絕對正中央對齊邏輯
         function freezeAndCapture() {
-            // 1. 觸發閃光燈
             flashEl.classList.add('flash-active');
             setTimeout(() => { flashEl.classList.remove('flash-active'); }, 400);
 
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
+            
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            canvas.width = screenWidth;
+            canvas.height = screenHeight;
 
-            canvas.width = videoElement.videoWidth;
-            canvas.height = videoElement.videoHeight;
+            // 1. 計算相機畫面在 Cover 模式下的裁切
+            const vWidth = videoElement.videoWidth;
+            const vHeight = videoElement.videoHeight;
+            
+            let scale = Math.max(screenWidth / vWidth, screenHeight / vHeight);
+            let sw = screenWidth / scale;
+            let sh = screenHeight / scale;
+            let sx = (vWidth - sw) / 2;
+            let sy = (vHeight - sh) / 2;
 
-            // 2. 繪製相機背景（做鏡像處理，使其與螢幕視覺完全一樣）
-            ctx.translate(canvas.width, 0);
+            // 2. 繪製鏡像相機背景
+            ctx.translate(screenWidth, 0);
             ctx.scale(-1, 1);
-            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(videoElement, sx, sy, sw, sh, 0, 0, screenWidth, screenHeight);
             ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
-            // 3. 計算並繪製縮小後的撲克牌
-            const cardAspect = 2.5 / 3.5;
-            const photoCardWidth = canvas.width * 0.35; 
-            const photoCardHeight = photoCardWidth / cardAspect;
-            const cardX = (canvas.width - photoCardWidth) / 2;
-            const cardY = (canvas.height - photoCardHeight) * 0.75; 
+            // 3. 🥇 終極修正：直接使用純幾何數學，強制將撲克牌繪製在 Canvas 的「絕對正中央」
+            // 這樣可以完全繞開網頁元素因狀態列或網址列產生的物理位置偏差
+            const rect = cardContainer.getBoundingClientRect();
+            const cardWidth = rect.width;   // 保持網頁上的原始撲克牌寬度 (180px)
+            const cardHeight = rect.height; // 保持網頁上的原始撲克牌高度
+
+            // 算中央點：(總寬度 - 卡片寬) / 2
+            const targetX = (screenWidth - cardWidth) / 2;
+            const targetY = (screenHeight - cardHeight) / 2;
 
             const pImage = new Image();
             pImage.src = cardImg.src;
             pImage.onload = function() {
-                ctx.drawImage(pImage, cardX, cardY, photoCardWidth, photoCardHeight);
+                // 強制在絕對幾何正中央烙印撲克牌
+                ctx.drawImage(pImage, targetX, targetY, cardWidth, cardHeight);
 
-                // 4. 將畫布轉換為圖片，並賦值給全螢幕隱藏的 freezeView
+                // 4. 覆蓋全螢幕靜態圖
                 const dataURL = canvas.toDataURL('image/png');
                 freezeView.src = dataURL;
-                freezeView.style.display = 'block'; // 瞬間秀出靜態照片，覆蓋一切
+                freezeView.style.display = 'block'; 
 
-                // 5. 🛑 魔術核心：徹底關閉前置鏡頭鏡頭，中止相機運作
+                // 5. 關閉相機鏡頭
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
-                    console.log("前置鏡頭已成功關閉 (鏡頭燈熄滅)");
                 }
 
                 isCountingDown = false;
@@ -303,29 +317,26 @@
             isCountingDown = false;
             cardImg.classList.remove('card-locked');
             countdownEl.style.display = 'none';
-            freezeView.style.display = 'none'; // 重置時隱藏定格層
+            freezeView.style.display = 'none'; 
             
             statusIndicator.textContent = isAudienceMode ? "" : "M";
 
-            // 如果重新切換模式，重啟鏡頭
             if (!isAudienceMode) {
                 startCamera();
             }
         });
 
         // ==========================================
-        // AI 偵測雙手方框
+        // AI 雙手方框偵測
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
         function checkIsLSign(hand) {
-            const isThumbUp = hand[4].x !== hand[3].x; 
             const isIndexUp = hand[8].y < hand[6].y;   
             const isMiddleDown = hand[12].y > hand[10].y; 
             const isRingDown = hand[16].y > hand[14].y;   
             const isPinkyDown = hand[20].y > hand[18].y;  
-
             return (isIndexUp && isMiddleDown && isRingDown && isPinkyDown);
         }
 
@@ -374,7 +385,6 @@
 
         hands.onResults(onResults);
 
-        // 封裝鏡頭啟動，以便可以重複呼叫
         function startCamera() {
             navigator.mediaDevices.getUserMedia({
                 video: { width: 640, height: 480, facingMode: 'user' }
@@ -384,7 +394,6 @@
                 
                 const camera = new Camera(videoElement, {
                     onFrame: async () => {
-                        // 只有在沒有定格照片時才把影格送去 AI 辨識
                         if (freezeView.style.display !== 'block') {
                             await hands.send({ image: videoElement });
                         }
@@ -394,11 +403,10 @@
                 });
                 camera.start();
             }).catch(err => {
-                console.error("無法取得相機權限:", err);
+                console.error("Camera error:", err);
             });
         }
         
-        // 初始啟動
         startCamera();
 
         currentSuitIndex = Math.floor(Math.random() * 4);
