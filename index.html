@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Debug Mode</title>
+    <title>Card Randomizer AI - Perfect Version</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -20,35 +20,36 @@
             background-color: #1a1a1a;
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             display: flex;
-            flex-direction: column; /* 改為垂直排列，方便看鏡頭 */
             justify-content: center;
             align-items: center;
             height: 100vh;
             overflow: hidden;
+            position: relative;
         }
         
-        /* 🎥 前置鏡頭畫面（現在看得到了！） */
+        /* 🎥 1. 鏡頭畫面全螢幕背景化 */
         #webcam {
-            width: 240px;
-            height: 180px;
-            object-fit: cover;
-            border-radius: 10px;
-            border: 2px solid #444;
-            margin-bottom: 20px;
-            transform: scaleX(-1); /* 鏡像翻轉，讓畫面跟照鏡子一樣自然 */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover; /* 鋪滿全螢幕 */
+            transform: scaleX(-1); /* 鏡像翻轉 */
+            z-index: 1; /* 放在最底層 */
             
-            /* 💡 表演提示：練習時用 0.25 ~ 0.5 方便看，正式表演請改成 0 徹底隱形 */
-            opacity: 0.4; 
+            /* 💡 表演提示：練習時用 0.3 方便看範圍，正式表演請改成 0 徹底隱形 */
+            opacity: 0.3; 
             transition: opacity 0.3s ease;
         }
 
-        /* 🃏 縮小後的卡片顯示區域 */
+        /* 🃏 2. 撲克牌容器與「向左滑動」動效 */
         .card-container {
-            width: 180px; /* 從 320px 大幅調小 */
+            width: 180px;
             aspect-ratio: 2.5 / 3.5;
             perspective: 1000px;
             position: relative;
-            z-index: 10;
+            z-index: 10; /* 確保在相機背景上方 */
         }
         .card-img {
             width: 100%;
@@ -57,11 +58,16 @@
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.6);
             position: absolute;
+            /* 將 transition 拆開，方便單獨控製圖片更換時不要有殘影 */
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+            transform: translateX(0) rotate(0deg);
+            opacity: 1;
         }
-        .swipe-up {
-            transform: translateY(-160%) rotate(-5deg);
-            opacity: 0;
+        
+        /* 卡片向左飛出螢幕外 */
+        .swipe-left-out {
+            transform: translateX(-160%) rotate(-10deg) !important;
+            opacity: 0 !important;
         }
 
         /* 右下角隱形按鈕 */
@@ -75,14 +81,14 @@
             z-index: 9999;
             cursor: pointer;
         }
-        /* 狀態指示燈（非常暗的灰色） */
+        /* 狀態指示燈 */
         #status-indicator {
             position: fixed;
             top: 15px;
             left: 15px;
             font-size: 14px;
             font-weight: bold;
-            color: #222222; 
+            color: #444444; 
             pointer-events: none;
             z-index: 100;
         }
@@ -154,28 +160,36 @@
             }
         }
 
+        // 🎬 3. 優化後的向左滑動換牌動畫（解決變牌時間差）
         function handleSwipe() {
             if (isAnimating) return;
             isAnimating = true;
 
-            cardImg.classList.add('swipe-up');
+            // 步驟一：舊卡片往左飛出
+            cardImg.classList.add('swipe-left-out');
 
             setTimeout(() => {
+                // 步驟二：在畫面外計算新牌，並「立刻換圖」
                 getNextCard();
                 updateCardDOM(currentSuitIndex, currentNum);
 
+                // 步驟三：關閉動畫效果，瞬間把新卡片移到「右邊畫面外」準備進入
                 cardImg.style.transition = 'none';
-                cardImg.style.transform = 'translateY(150%)';
+                cardImg.style.transform = 'translateX(160%) rotate(10deg)';
                 cardImg.style.opacity = '0';
+                cardImg.classList.remove('swipe-left-out');
+
+                // 強制瀏覽器重繪，確保上述「右移」動作已完成
                 cardImg.offsetHeight;
 
+                // 步驟四：恢復動畫，讓新卡片從右邊帥氣滑入中央就位
                 cardImg.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
-                cardImg.style.transform = 'none';
+                cardImg.style.transform = 'translateX(0) rotate(0deg)';
                 cardImg.style.opacity = '1';
-                cardImg.classList.remove('swipe-up');
                 
-                setTimeout(() => { isAnimating = false; }, 350);
-            }, 300);
+                // 動畫完全結束後解鎖
+                setTimeout(() => { isAnimating = false; }, 300);
+            }, 300); // 飛出所需的時間
         }
 
         secretTrigger.addEventListener('click', (e) => {
@@ -185,10 +199,10 @@
         });
 
         // ==========================================
-        // AI 手勢辨識
+        // 🚀修正鏡像後的「向左揮手」AI 邏輯
         // ==========================================
         let lastBaseX = null;
-        let swipeThreshold = 0.08; // 稍微再調低一點點，更容易觸發
+        let swipeThreshold = 0.08; 
 
         function onResults(results) {
             if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
@@ -202,9 +216,10 @@
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
 
-                // 註：因為相機畫面在 CSS 做了鏡像翻轉(scaleX(-1))
-                // 觀眾肉眼「向左揮」，在原始座標裡數據是變小的（deltaX < 0）
-                if (deltaX < -swipeThreshold) {
+                // 💡 關鍵修正：
+                // 在全螢幕背景與鏡像 scaleX(-1) 下，觀眾肉眼「向左揮手」
+                // 實測對應到鏡頭原始座標的數值是「增加」的（deltaX > 0）
+                if (deltaX > swipeThreshold) {
                     handleSwipe();
                     lastBaseX = null; 
                     return;
@@ -231,8 +246,8 @@
             onFrame: async () => {
                 await hands.send({ image: videoElement });
             },
-            width: 320, 
-            height: 240,
+            width: 640, // 放大解析度以適應全螢幕背景追蹤
+            height: 480,
             facingMode: 'user'
         });
         
