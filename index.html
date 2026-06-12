@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Stack +3</title>
+    <title>Card Randomizer AI - Auto Stack</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -33,7 +33,7 @@
             object-fit: cover;
             transform: scaleX(-1);
             z-index: 1;
-            opacity: 0.4; /* 💡 表演時請改成 0 徹底隱形 */
+            opacity: 0.4; /* 💡 表演時請改成 0 徹底隱形鏡頭 */
             transition: opacity 0.3s ease;
         }
 
@@ -103,24 +103,10 @@
             user-select: auto !important;
             -webkit-user-select: auto !important;
         }
-
-        #secret-trigger {
-            position: fixed;
-            right: 0; bottom: 0; width: 65px; height: 65px;
-            background-color: transparent;
-            z-index: 9999;
-            cursor: pointer;
-        }
-        #status-indicator {
-            position: fixed;
-            top: 15px; left: 15px; font-size: 14px; font-weight: bold;
-            color: #444444; pointer-events: none; z-index: 100;
-        }
     </style>
 </head>
 <body>
 
-    <div id="status-indicator">M</div>
     <div id="countdown">3</div>
     <div id="shutter-flash"></div>
     
@@ -132,8 +118,6 @@
         <img src="./cards/spade_1.png" alt="Poker Card" class="card-img" id="poker-card">
     </div>
 
-    <div id="secret-trigger"></div>
-
     <script>
         const suits = ['spade', 'diamond', 'club', 'heart'];
         const numLabels = {
@@ -143,7 +127,6 @@
 
         let currentSuitIndex = 0; 
         let currentNum = 1;      
-        let isAudienceMode = false;
         let isAnimating = false;
         let isLocked = false; 
         let isCountingDown = false;
@@ -152,10 +135,11 @@
         let gestureStartTime = null; 
         const HOLD_DURATION = 2000; 
 
+        // 🥇 核心修改：計數器邏輯
+        let swipeCount = 0; // 用來記錄觀眾總共揮手了幾次
+
         const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
-        const secretTrigger = document.getElementById('secret-trigger');
-        const statusIndicator = document.getElementById('status-indicator');
         const videoElement = document.getElementById('webcam');
         const countdownEl = document.getElementById('countdown');
         const flashEl = document.getElementById('shutter-flash');
@@ -179,10 +163,12 @@
             cardImg.src = getCardImagePath(suitIdx, num);
         }
 
-        // 🥇 核心修改點：將觀眾模式的加牌邏輯從 +5 改為 +3
+        // 🥇 核心修改點：揮動兩次前隨機，揮動兩次後強制進入穩定的 +3 堆疊邏輯
         function getNextCard() {
-            if (!isAudienceMode) {
-                // 魔術師模式：完全隨機
+            swipeCount++; // 每次執行切牌，次數 +1
+
+            if (swipeCount <= 2) {
+                // 前兩次揮手：使用完全隨機模式，讓魔術露餡機率降為 0
                 let nextSuitIndex, nextNum;
                 do {
                     nextSuitIndex = Math.floor(Math.random() * 4);
@@ -192,9 +178,9 @@
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
             } else {
-                // 觀眾模式：花色順延，數字穩定 +3
+                // 第三次揮手開始（含第三次）：完美、神不知鬼不覺地進入 +3 堆疊控制
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
-                currentNum = currentNum + 3; // 💡 這裡已修改為 +3
+                currentNum = currentNum + 3;
                 if (currentNum > 13) {
                     currentNum = currentNum - 13;
                 }
@@ -296,24 +282,9 @@
             };
         }
 
-        secretTrigger.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            isAudienceMode = !isAudienceMode;
-            isLocked = false;
-            isCountingDown = false;
-            gestureStartTime = null; 
-            cardImg.classList.remove('card-locked');
-            countdownEl.style.display = 'none';
-            freezeView.style.display = 'none'; 
-            
-            statusIndicator.textContent = isAudienceMode ? "" : "M";
-
-            if (!isAudienceMode) {
-                startCamera();
-            }
-        });
-
+        // ==========================================
         // AI 開掌手勢偵測 Logic
+        // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
@@ -335,13 +306,17 @@
             const hand = results.multiHandLandmarks[0];
 
             if (checkIsOpenPalm(hand)) {
-                if (gestureStartTime === null) {
-                    gestureStartTime = Date.now(); 
-                } else {
-                    const elapsed = Date.now() - gestureStartTime;
-                    if (elapsed >= HOLD_DURATION && !isLocked) {
-                        isLocked = true; 
-                        startLockAndCapture(); 
+                // 💡 只有當觀眾至少揮過兩次手、進入穩定的堆疊模式後，開掌 2 秒定格拍照才會生效
+                // 這能完美防止觀眾一拿到手機，手還沒開始洗牌就因為亂晃而直接誤觸鎖定
+                if (swipeCount >= 2) {
+                    if (gestureStartTime === null) {
+                        gestureStartTime = Date.now(); 
+                    } else {
+                        const elapsed = Date.now() - gestureStartTime;
+                        if (elapsed >= HOLD_DURATION && !isLocked) {
+                            isLocked = true; 
+                            startLockAndCapture(); 
+                        }
                     }
                 }
                 return; 
@@ -400,6 +375,7 @@
         
         startCamera();
 
+        // 初始化：開局第一張牌完全隨機
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
