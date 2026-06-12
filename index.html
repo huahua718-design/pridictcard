@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Mirror Corrected</title>
+    <title>Card Randomizer AI - Stack +3</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -179,8 +179,10 @@
             cardImg.src = getCardImagePath(suitIdx, num);
         }
 
+        // 🥇 核心修改點：將觀眾模式的加牌邏輯從 +5 改為 +3
         function getNextCard() {
             if (!isAudienceMode) {
+                // 魔術師模式：完全隨機
                 let nextSuitIndex, nextNum;
                 do {
                     nextSuitIndex = Math.floor(Math.random() * 4);
@@ -190,44 +192,34 @@
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
             } else {
+                // 觀眾模式：花色順延，數字穩定 +3
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
-                currentNum = currentNum + 5;
+                currentNum = currentNum + 3; // 💡 這裡已修改為 +3
                 if (currentNum > 13) {
                     currentNum = currentNum - 13;
                 }
             }
         }
 
-        // 🥇 核心修正：對抗鏡像錯覺的滑動調度
         function handleSwipe() {
             if (isAnimating || isLocked) return;
             isAnimating = true;
 
-            // 1. 舊卡片滑向物理左側外面（順應鏡像畫面中的向左揮動）
             cardImg.classList.add('swipe-left-out');
 
-            // 2. 舊卡片滑出（耗時 250ms）後
             setTimeout(() => {
                 getNextCard();
                 
-                // 🛑 修正：關閉過渡動畫，把新牌放到物理左側更深處 (-180%)，並稍微順時針旋轉
-                // 這樣在鏡像畫面上，新牌等一下看起來才會是從「畫面右側（觀眾的右手邊）」滑入！
                 cardImg.style.transition = 'none';
                 cardImg.style.transform = 'translateX(-180%) rotate(15deg)';
                 cardImg.style.opacity = '0';
                 
                 updateCardDOM(currentSuitIndex, currentNum);
-
-                // 強制重繪
                 cardImg.offsetHeight;
 
-                // 3. 讓新卡片從物理左側，向右滑入（translateX 0%）回到正中央
                 setTimeout(() => {
                     cardImg.classList.remove('swipe-left-out');
-                    
-                    // 恢復滑入過渡動畫
                     cardImg.style.transition = 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.25s ease-out';
-                    
                     cardImg.style.transform = 'translateX(0) rotate(0deg)';
                     cardImg.style.opacity = '1';
                     
@@ -321,9 +313,7 @@
             }
         });
 
-        // ==========================================
         // AI 開掌手勢偵測 Logic
-        // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
