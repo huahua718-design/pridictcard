@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Auto Stack</title>
+    <title>Card Randomizer AI - Thumbs Up Edition</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -33,7 +33,7 @@
             object-fit: cover;
             transform: scaleX(-1);
             z-index: 1;
-            opacity: 0.4; /* 💡 表演時請改成 0 徹底隱形鏡頭 */
+            opacity: 0.4; /* 💡 正式表演請改成 0 徹底隱形鏡頭 */
             transition: opacity 0.3s ease;
         }
 
@@ -49,19 +49,19 @@
             height: 100%;
             object-fit: contain;
             border-radius: 10px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.8); 
             position: absolute;
-            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.3s ease;
+            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.2s ease;
             transform: translateX(0) rotate(0deg);
             opacity: 1;
         }
         
-        /* 舊卡片飛出物理左側 */
         .swipe-left-out {
-            transform: translateX(-180%) rotate(-15deg) !important;
+            transform: translateX(-180%) rotate(-15deg) scale(1.04) !important;
             opacity: 0 !important;
         }
 
+        /* 鎖定時的能量外框（比讚 2 秒後觸發） */
         .card-locked {
             box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
@@ -134,9 +134,7 @@
 
         let gestureStartTime = null; 
         const HOLD_DURATION = 2000; 
-
-        // 🥇 核心修改：計數器邏輯
-        let swipeCount = 0; // 用來記錄觀眾總共揮手了幾次
+        let swipeCount = 0; 
 
         const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
@@ -144,6 +142,35 @@
         const countdownEl = document.getElementById('countdown');
         const flashEl = document.getElementById('shutter-flash');
         const freezeView = document.getElementById('freeze-view');
+
+        // ==========================================
+        // 🔊 魔術師專屬：隱音回饋系統
+        // ==========================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playFeedbackSound(type) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'click') {
+                    // 普通洗牌：極低頻短促的「啵」
+                    osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.04);
+                } else if (type === 'ready') {
+                    // 魔術堆疊就緒：高低雙音「嗶-逼」
+                    osc.frequency.setValueAtTime(280, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.08);
+                }
+            } catch (e) { console.log("Audio error"); }
+        }
 
         function getCardImagePath(suitIdx, num) {
             return `./cards/${suits[suitIdx]}_${numLabels[num]}.png`;
@@ -163,12 +190,16 @@
             cardImg.src = getCardImagePath(suitIdx, num);
         }
 
-        // 🥇 核心修改點：揮動兩次前隨機，揮動兩次後強制進入穩定的 +3 堆疊邏輯
         function getNextCard() {
-            swipeCount++; // 每次執行切牌，次數 +1
+            swipeCount++; 
+
+            if (swipeCount === 2) {
+                playFeedbackSound('ready'); // 👂 聽到這個聲音，代表 +3 堆疊啟動，大拇指控制鎖開啟
+            } else {
+                playFeedbackSound('click'); // 👂 普通換牌提示音
+            }
 
             if (swipeCount <= 2) {
-                // 前兩次揮手：使用完全隨機模式，讓魔術露餡機率降為 0
                 let nextSuitIndex, nextNum;
                 do {
                     nextSuitIndex = Math.floor(Math.random() * 4);
@@ -178,7 +209,6 @@
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
             } else {
-                // 第三次揮手開始（含第三次）：完美、神不知鬼不覺地進入 +3 堆疊控制
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
                 currentNum = currentNum + 3;
                 if (currentNum > 13) {
@@ -283,17 +313,22 @@
         }
 
         // ==========================================
-        // AI 開掌手勢偵測 Logic
+        // 🥇 核心修改：精準的「大拇指朝上」演算法
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
-        function checkIsOpenPalm(hand) {
-            const isIndexUp = hand[8].y < hand[6].y;     
-            const isMiddleUp = hand[12].y < hand[10].y;   
-            const isRingUp = hand[16].y < hand[14].y;     
-            const isPinkyUp = hand[20].y < hand[18].y;    
-            return (isIndexUp && isMiddleUp && isRingUp && isPinkyUp);
+        function checkIsThumbsUp(hand) {
+            // 1. 大拇指指尖 (4) 必須明顯高於大拇指關節 (3)
+            const isThumbUp = hand[4].y < hand[3].y;
+            
+            // 2. 其餘四指必須處於「收攏/握拳」狀態 (指尖低於各自的第二關節)
+            const isIndexDown = hand[8].y > hand[6].y;
+            const isMiddleDown = hand[12].y > hand[10].y;
+            const isRingDown = hand[16].y > hand[14].y;
+            const isPinkyDown = hand[20].y > hand[18].y;
+
+            return (isThumbUp && isIndexDown && isMiddleDown && isRingDown && isPinkyDown);
         }
 
         function onResults(results) {
@@ -305,10 +340,9 @@
 
             const hand = results.multiHandLandmarks[0];
 
-            if (checkIsOpenPalm(hand)) {
-                // 💡 只有當觀眾至少揮過兩次手、進入穩定的堆疊模式後，開掌 2 秒定格拍照才會生效
-                // 這能完美防止觀眾一拿到手機，手還沒開始洗牌就因為亂晃而直接誤觸鎖定
-                if (swipeCount >= 2) {
+            // 🥇 偵測手勢改為「比讚」
+            if (checkIsThumbsUp(hand)) {
+                if (swipeCount >= 2) { // 必須揮手兩次解鎖後，比讚才有效
                     if (gestureStartTime === null) {
                         gestureStartTime = Date.now(); 
                     } else {
@@ -326,6 +360,7 @@
 
             if (isLocked) return;
 
+            // 橫向揮手洗牌偵測 (依然使用開掌掌心面向鏡頭，辨識率最高)
             const currentBaseX = (hand[9].x + hand[12].x) / 2;
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
@@ -345,8 +380,8 @@
         hands.setOptions({
             maxNumHands: 1, 
             modelComplexity: 0, 
-            minDetectionConfidence: 0.3, 
-            minTrackingConfidence: 0.3
+            minDetectionConfidence: 0.4, // 微調信心度，大拇指判定更乾淨
+            minTrackingConfidence: 0.4
         });
 
         hands.onResults(onResults);
@@ -369,13 +404,12 @@
                 });
                 camera.start();
             }).catch(err => {
-                console.error("Camera error:", err);
+                console.error("Camera error");
             });
         }
         
         startCamera();
 
-        // 初始化：開局第一張牌完全隨機
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
