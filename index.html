@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Presence Glow Edition</title>
+    <title>Card Randomizer AI - Dark Focus Edition</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -17,7 +17,7 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: #1a1a1a;
+            background-color: #000000; /* 💡 確保背景是極致純黑 */
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             display: flex;
             justify-content: center;
@@ -33,8 +33,8 @@
             object-fit: cover;
             transform: scaleX(-1);
             z-index: 1;
-            opacity: 0.4; /* 💡 正式表演請改成 0 徹底隱形鏡頭 */
-            transition: opacity 0.3s ease;
+            opacity: 0.5; /* 🥇 預設提高到 0.5，讓觀眾能清晰看到自己的手掌 */
+            transition: opacity 0.3s ease; /* 預設切換速度 */
         }
 
         .card-container {
@@ -51,13 +51,11 @@
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.8); 
             position: absolute;
-            /* 讓發光與動畫的過渡更加絲滑 */
             transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.3s ease;
             transform: translateX(0) rotate(0deg);
             opacity: 1;
         }
         
-        /* 🎬 撲克牌雙向滑出動畫 */
         .swipe-left-out {
             transform: translateX(-180%) rotate(-15deg) scale(1.02) !important;
             opacity: 0 !important;
@@ -67,12 +65,12 @@
             opacity: 0 !important;
         }
 
-        /* 🥇 偵測到手掌時的「神祕科技藍」微發光效果 */
+        /* 🥇 藍色偵測微光 */
         .card-detect-glow {
             box-shadow: 0 0 25px rgba(0, 162, 255, 0.6), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
 
-        /* 🥇 確定鎖定時的「命運綠」強光效果 */
+        /* 🥇 鎖定綠色強光 */
         .card-locked {
             box-shadow: 0 0 30px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
@@ -307,10 +305,17 @@
             }, 250); 
         }
 
+        // ==========================================
+        // 🥇 倒數機制與背景漸暗優化
+        // ==========================================
         function startCountdownSequence() {
             let count = 3;
             countdownEl.textContent = count;
             countdownEl.style.display = 'block';
+
+            // ⚡ 核心改動：將相機過渡時間拉長到 3 秒，並將不透明度降到 0（完美同步倒數時間）
+            videoElement.style.transition = 'opacity 3.0s linear';
+            videoElement.style.opacity = '0';
 
             countdownInterval = setInterval(() => {
                 count--;
@@ -339,6 +344,10 @@
                 countdownEl.style.display = 'none';
                 cardImg.classList.remove('card-locked');
                 updateArrowUI(); 
+
+                // ⚡ 核心改動：如果觀眾中途伸手叫卡，相機畫面在 0.2 秒內光速亮起還原
+                videoElement.style.transition = 'opacity 0.2s ease-out';
+                videoElement.style.opacity = '0.5';
             }
         }
 
@@ -354,19 +363,10 @@
             canvas.width = screenWidth;
             canvas.height = screenHeight;
 
-            const vWidth = videoElement.videoWidth;
-            const vHeight = videoElement.videoHeight;
-            
-            let scale = Math.max(screenWidth / vWidth, screenHeight / vHeight);
-            let sw = screenWidth / scale;
-            let sh = screenHeight / scale;
-            let sx = (vWidth - sw) / 2;
-            let sy = (vHeight - sh) / 2;
-
-            ctx.translate(screenWidth, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(videoElement, sx, sy, sw, sh, 0, 0, screenWidth, screenHeight);
-            ctx.setTransform(1, 0, 0, 1, 0, 0); 
+            // ⚡ 核心改動：移除原本繪製鏡頭畫面的 ctx.drawImage 程式碼
+            // 改為直接塗黑畫布，確保生成的最後相片背景絕對純黑、沒有任何環境雜訊
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, screenWidth, screenHeight);
 
             const targetX = (screenWidth - 180) / 2;
             const targetY = (screenHeight - 252) / 2;
@@ -392,19 +392,16 @@
         let swipeThreshold = 0.08; 
 
         function onResults(results) {
-            // 🥇 情況 A：畫面上沒有手掌
             if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
                 lastBaseX = null;
-                
-                // 🛑 沒手時，立刻移除藍色偵測微光
                 cardImg.classList.remove('card-detect-glow');
 
                 if (!isLocked && !isCountingDown && !noHandTimeout) {
                     if (swipeCount >= 2) {
                         noHandTimeout = setTimeout(() => {
                             isCountingDown = true;
-                            cardImg.classList.remove('card-detect-glow'); // 確保切換乾淨
-                            cardImg.classList.add('card-locked'); // 改為啟動綠色強光
+                            cardImg.classList.remove('card-detect-glow'); 
+                            cardImg.classList.add('card-locked'); 
                             updateArrowUI(); 
                             startCountdownSequence();
                         }, 1500); 
@@ -413,10 +410,8 @@
                 return;
             }
 
-            // 🥇 情況 B：手掌重新回到畫面上
             cancelCountdownSequence();
 
-            // ✨ 當手掌出現在畫面，且還沒進入最後拍照鎖定狀態時，加入藍色微發光
             if (!isLocked && !isCountingDown) {
                 cardImg.classList.add('card-detect-glow');
             }
