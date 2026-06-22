@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Arrow Hint Edition</title>
+    <title>Card Randomizer AI - Hand Leave Edition</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -37,7 +37,6 @@
             transition: opacity 0.3s ease;
         }
 
-        /* 撲克牌容器 */
         .card-container {
             width: 180px;
             aspect-ratio: 2.5 / 3.5;
@@ -57,7 +56,7 @@
             opacity: 1;
         }
         
-        /* 🎬 撲克牌滑出動畫 */
+        /* 🎬 撲克牌雙向滑出動畫 */
         .swipe-left-out {
             transform: translateX(-180%) rotate(-15deg) scale(1.02) !important;
             opacity: 0 !important;
@@ -67,7 +66,7 @@
             opacity: 0 !important;
         }
 
-        /* 🥇 質感動態視覺提示（箭頭容器） */
+        /* 🥇 全新提示字樣與動態效果 */
         #hint-container {
             position: fixed;
             bottom: 8%;
@@ -79,24 +78,23 @@
             transition: opacity 0.3s ease, transform 0.3s ease;
         }
         #direction-arrow {
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 600;
-            color: rgba(255, 255, 255, 0.85);
+            color: rgba(255, 255, 255, 0.9);
             background: rgba(255, 255, 255, 0.1);
-            padding: 12px 28px;
+            padding: 12px 26px;
             border-radius: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             box-shadow: 0 10px 25px rgba(0,0,0,0.4);
             animation: bounce-anim 1.6s infinite ease-in-out;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             transition: all 0.3s ease;
         }
-        /* 箭頭輕微跳動的呼吸感，引導視覺 */
         @keyframes bounce-anim {
-            0%, 100% { transform: translateY(0) scale(1); }
-            50% { transform: translateY(-6px) scale(1.02); }
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
         }
 
         .card-locked {
@@ -137,8 +135,6 @@
             object-fit: cover;
             z-index: 9998;
             display: none;
-            user-select: auto !important;
-            -webkit-user-select: auto !important;
         }
     </style>
 </head>
@@ -152,7 +148,7 @@
     <video id="webcam" autoplay playsinline></video>
 
     <div id="hint-container">
-        <div id="direction-arrow">← 往左揮</div>
+        <div id="direction-arrow">← 向左揮換牌</div>
     </div>
 
     <div class="card-container" id="card-container">
@@ -170,23 +166,22 @@
         let currentNum = 1;      
         let isAnimating = false;
         let isLocked = false; 
-        let isCountingDown = false;
         let localStream = null; 
-
-        let gestureStartTime = null; 
-        const HOLD_DURATION = 2000; 
         
         let swipeCount = 0; 
-        let expectedDirection = 'left'; // 預期方向：開局第一次必須是由右向左 ('left')
+        let expectedDirection = 'left'; 
 
-        const cardContainer = document.getElementById('card-container');
+        // 🥇 核心狀態控制鎖
+        let cooldownActive = false;    // 時間冷卻鎖狀態
+        let isCountingDown = false;    // 是否正在進行 3-2-1 倒數
+        let noHandTimeout = null;      // 離開畫面 1.5 秒的計時器
+        let countdownInterval = null;  // 倒數秒數的定時器
+
         const cardImg = document.getElementById('poker-card');
         const videoElement = document.getElementById('webcam');
         const countdownEl = document.getElementById('countdown');
         const flashEl = document.getElementById('shutter-flash');
         const freezeView = document.getElementById('freeze-view');
-        
-        // 🥇 取得提示元件
         const hintContainer = document.getElementById('hint-container');
         const arrowEl = document.getElementById('direction-arrow');
 
@@ -202,17 +197,17 @@
                 gain.connect(audioCtx.destination);
 
                 if (type === 'left') {
-                    osc.frequency.setValueAtTime(140, audioCtx.currentTime); // 左滑：低頻「啵」
+                    osc.frequency.setValueAtTime(140, audioCtx.currentTime); // 低頻「啵」
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.04);
                 } else if (type === 'right') {
-                    osc.frequency.setValueAtTime(380, audioCtx.currentTime); // 右滑：高頻「叮」
+                    osc.frequency.setValueAtTime(380, audioCtx.currentTime); // 高頻「叮」
                     gain.gain.setValueAtTime(0.03, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.05);
                 } else if (type === 'ready') {
-                    osc.frequency.setValueAtTime(280, audioCtx.currentTime); // 模式就緒：雙音
+                    osc.frequency.setValueAtTime(280, audioCtx.currentTime); // 模式就緒雙音
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.08);
@@ -220,21 +215,20 @@
             } catch (e) {}
         }
 
-        // 🥇 動態更換提示箭頭文字
+        // 🥇 更改提示字樣
         function updateArrowUI() {
             if (isLocked || isCountingDown) {
                 hintContainer.style.opacity = '0';
                 hintContainer.style.transform = 'translateY(20px)';
                 return;
             }
-
             hintContainer.style.opacity = '1';
             hintContainer.style.transform = 'translateY(0)';
 
             if (expectedDirection === 'left') {
-                arrowEl.textContent = '← 往左揮';
+                arrowEl.textContent = '← 向左揮換牌';
             } else {
-                arrowEl.textContent = '往右揮 →';
+                arrowEl.textContent = '向右揮換牌 →';
             }
         }
 
@@ -258,7 +252,6 @@
 
         function getNextCard(direction) {
             swipeCount++; 
-
             if (swipeCount === 2) {
                 playFeedbackSound('ready');
             } else {
@@ -271,21 +264,19 @@
                     nextSuitIndex = Math.floor(Math.random() * 4);
                     nextNum = Math.floor(Math.random() * 13) + 1;
                 } while (nextSuitIndex === currentSuitIndex && nextNum === currentNum);
-                
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
             } else {
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
                 currentNum = currentNum + 3;
-                if (currentNum > 13) {
-                    currentNum = currentNum - 13;
-                }
+                if (currentNum > 13) currentNum = currentNum - 13;
             }
         }
 
         function handleSwipe(direction) {
-            if (isAnimating || isLocked) return;
+            if (isAnimating || isLocked || cooldownActive) return;
             isAnimating = true;
+            cooldownActive = true; // 🥇 啟動時間冷卻鎖，防止多跳牌
 
             const animationClass = (direction === 'left') ? 'swipe-left-out' : 'swipe-right-out';
             cardImg.classList.add(animationClass);
@@ -306,32 +297,58 @@
                     cardImg.style.transform = 'translateX(0) rotate(0deg)';
                     cardImg.style.opacity = '1';
                     
-                    setTimeout(() => { isAnimating = false; }, 350);
+                    // 動畫結束
+                    setTimeout(() => { 
+                        isAnimating = false; 
+                    }, 350);
+
+                    // 🥇 時間冷卻鎖：換牌完成後強迫耳聾 800 毫秒，徹底解決過渡期誤觸
+                    setTimeout(() => {
+                        cooldownActive = false;
+                    }, 800);
+
                 }, 20); 
             }, 250); 
         }
 
-        function startLockAndCapture() {
-            if (isCountingDown) return;
-            isCountingDown = true;
-            
-            cardImg.classList.add('card-locked'); 
-            updateArrowUI(); // 隱藏箭頭
-
+        // 🥇 啟動 3-2-1 倒數序列
+        function startCountdownSequence() {
             let count = 3;
             countdownEl.textContent = count;
             countdownEl.style.display = 'block';
 
-            let timer = setInterval(() => {
+            countdownInterval = setInterval(() => {
                 count--;
                 if (count > 0) {
                     countdownEl.textContent = count;
                 } else {
-                    clearInterval(timer);
+                    clearInterval(countdownInterval);
                     countdownEl.style.display = 'none';
+                    isLocked = true;
                     freezeAndCapture(); 
                 }
             }, 1000);
+        }
+
+        // 🥇 核心修改：取消倒數機制（當手掌重新回到畫面上）
+        function cancelCountdownSequence() {
+            // 1. 清除 1.5 秒的離手等待計時器
+            if (noHandTimeout) {
+                clearTimeout(noHandTimeout);
+                noHandTimeout = null;
+            }
+            // 2. 清除 3-2-1 數字倒數定時器
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            // 3. 還原 UI 狀態
+            if (isCountingDown) {
+                isCountingDown = false;
+                countdownEl.style.display = 'none';
+                cardImg.classList.remove('card-locked');
+                updateArrowUI(); // 重新顯示方向箭頭
+            }
         }
 
         function freezeAndCapture() {
@@ -374,53 +391,44 @@
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
                 }
-                isCountingDown = false;
             };
         }
 
         // ==========================================
-        // 🥇 狀態判斷與方向驗證
+        // 🥇 核心偵測與離手狀態機
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
-        function checkIsThumbsUp(hand) {
-            const isThumbUp = hand[4].y < hand[3].y;
-            const isIndexDown = hand[8].y > hand[6].y;
-            const isMiddleDown = hand[12].y > hand[10].y;
-            const isRingDown = hand[16].y > hand[14].y;
-            const isPinkyDown = hand[20].y > hand[18].y;
-            return (isThumbUp && isIndexDown && isMiddleDown && isRingDown && isPinkyDown);
-        }
-
         function onResults(results) {
+            // 🥇 情況 A：畫面上沒有偵測到手掌
             if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-                gestureStartTime = null; 
                 lastBaseX = null;
+
+                // 必須滿足：尚未鎖定、尚未進入倒數、且 1.5 秒離手計時器還沒被觸發過
+                if (!isLocked && !isCountingDown && !noHandTimeout) {
+                    // 觀眾洗牌滿 2 次解鎖後，離手才被允許啟動定格
+                    if (swipeCount >= 2) {
+                        noHandTimeout = setTimeout(() => {
+                            isCountingDown = true;
+                            cardImg.classList.add('card-locked'); 
+                            updateArrowUI(); // 隱藏方向提示
+                            startCountdownSequence();
+                        }, 1500); // 1.5 秒無手掌等待時間
+                    }
+                }
                 return;
             }
 
-            const hand = results.multiHandLandmarks[0];
+            // 🥇 情況 B：手掌重新出現在畫面上
+            // 如果此時正在倒數或正在等待 1.5 秒，立刻全面取消，保護目前牌面
+            cancelCountdownSequence();
 
-            if (checkIsThumbsUp(hand)) {
-                if (swipeCount >= 2) { 
-                    if (gestureStartTime === null) {
-                        gestureStartTime = Date.now(); 
-                    } else {
-                        const elapsed = Date.now() - gestureStartTime;
-                        if (elapsed >= HOLD_DURATION && !isLocked) {
-                            isLocked = true; 
-                            startLockAndCapture(); 
-                        }
-                    }
-                }
-                return; 
-            }
-
-            gestureStartTime = null;
             if (isLocked) return;
 
+            const hand = results.multiHandLandmarks[0];
             const currentBaseX = (hand[9].x + hand[12].x) / 2;
+            
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
                 let detectedDir = null;
@@ -431,13 +439,11 @@
                     detectedDir = 'right'; 
                 }
 
-                if (detectedDir && detectedDir === expectedDirection) {
+                // 當手勢方向正確，且冷卻鎖未啟動時才執行換牌
+                if (detectedDir && detectedDir === expectedDirection && !cooldownActive) {
                     handleSwipe(detectedDir);
-                    
-                    // 方向狀態翻轉，並即時更新 UI 箭頭
                     expectedDirection = (expectedDirection === 'left') ? 'right' : 'left';
                     updateArrowUI();
-                    
                     lastBaseX = null; 
                     return;
                 }
@@ -478,11 +484,11 @@
         
         startCamera();
 
-        // 初始設定
+        // 初始隨機第一張牌
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
-        updateArrowUI(); // 初始化動態箭頭
+        updateArrowUI();
     </script>
 </body>
 </html>
