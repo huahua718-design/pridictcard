@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Bidirectional</title>
+    <title>Card Randomizer AI - Direction Lock</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -56,13 +56,13 @@
             opacity: 1;
         }
         
-        /* 🥇 雙向動畫特效 */
+        /* 🎬 撲克牌跟隨手勢方向滑出畫面 */
         .swipe-left-out {
-            transform: translateX(-180%) rotate(-15deg) scale(1.04) !important;
+            transform: translateX(-180%) rotate(-15deg) scale(1.02) !important;
             opacity: 0 !important;
         }
         .swipe-right-out {
-            transform: translateX(180%) rotate(15deg) scale(1.04) !important;
+            transform: translateX(180%) rotate(15deg) scale(1.02) !important;
             opacity: 0 !important;
         }
 
@@ -138,7 +138,13 @@
 
         let gestureStartTime = null; 
         const HOLD_DURATION = 2000; 
-        let swipeCount = 0; 
+        
+        let swipeCount = 0; // 記錄成功換牌的次數
+        
+        // 🥇 核心機制：方向狀態鎖定
+        // 'left' 代表由右向左揮（體感向左），'right' 代表由左向右揮（體感向右）
+        // 依照要求：開局第一次換牌強制規定必須是 'left' (由右向左)
+        let expectedDirection = 'left'; 
 
         const cardContainer = document.getElementById('card-container');
         const cardImg = document.getElementById('poker-card');
@@ -159,20 +165,17 @@
                 gain.connect(audioCtx.destination);
 
                 if (type === 'left') {
-                    // 左滑：低頻「啵」
-                    osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(140, audioCtx.currentTime); // 左滑：低頻「啵」
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.04);
                 } else if (type === 'right') {
-                    // 右滑：高頻「叮」
-                    osc.frequency.setValueAtTime(380, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(380, audioCtx.currentTime); // 右滑：高頻「叮」
                     gain.gain.setValueAtTime(0.03, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.05);
                 } else if (type === 'ready') {
-                    // 系統就緒：雙音
-                    osc.frequency.setValueAtTime(280, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(280, audioCtx.currentTime); // 堆疊模式就緒：雙音
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.08);
@@ -201,7 +204,7 @@
         function getNextCard(direction) {
             swipeCount++; 
 
-            // 聽音判斷：如果是第二次，播放就緒音；否則根據方向播放高低音
+            // 聽音判斷：如果是第二次成功換牌，播放就緒音；其餘播放方向對應音
             if (swipeCount === 2) {
                 playFeedbackSound('ready');
             } else {
@@ -209,7 +212,6 @@
             }
 
             if (swipeCount <= 2) {
-                // 前兩次隨機
                 let nextSuitIndex, nextNum;
                 do {
                     nextSuitIndex = Math.floor(Math.random() * 4);
@@ -219,7 +221,6 @@
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
             } else {
-                // 第三次開始：穩定的 +3 堆疊邏輯
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
                 currentNum = currentNum + 3;
                 if (currentNum > 13) {
@@ -228,7 +229,7 @@
             }
         }
 
-        // 🥇 修改：支援雙向動畫飛出
+        // 🥇 核心修改：嚴格遵從相同方向飛出、同側移入中央的物理動畫
         function handleSwipe(direction) {
             if (isAnimating || isLocked) return;
             isAnimating = true;
@@ -239,16 +240,17 @@
             setTimeout(() => {
                 getNextCard(direction);
                 
+                // 核心關鍵：新撲克牌必須從剛剛「移出的位置」登場，準備往中央移動
                 cardImg.style.transition = 'none';
-                // 根據方向決定卡片回彈的初始隱形位置
                 cardImg.style.transform = (direction === 'left') ? 'translateX(-180%) rotate(15deg)' : 'translateX(180%) rotate(-15deg)';
                 cardImg.style.opacity = '0';
                 
                 updateCardDOM(currentSuitIndex, currentNum);
-                cardImg.offsetHeight;
+                cardImg.offsetHeight; // 強制重繪
 
                 setTimeout(() => {
                     cardImg.classList.remove(animationClass);
+                    // 新撲克牌移到中央的過渡動畫
                     cardImg.style.transition = 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.25s ease-out';
                     cardImg.style.transform = 'translateX(0) rotate(0deg)';
                     cardImg.style.opacity = '1';
@@ -313,7 +315,6 @@
             pImage.src = cardImg.src;
             pImage.onload = function() {
                 ctx.drawImage(pImage, targetX, targetY, 180, 252);
-
                 const dataURL = canvas.toDataURL('image/png');
                 freezeView.src = dataURL;
                 freezeView.style.display = 'block'; 
@@ -321,13 +322,12 @@
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
                 }
-
                 isCountingDown = false;
             };
         }
 
         // ==========================================
-        // 🥇 雙向手勢偵測 Logic
+        // 🥇 狀態判斷與方向驗證
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
@@ -371,15 +371,21 @@
             const currentBaseX = (hand[9].x + hand[12].x) / 2;
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
-                
-                // 🥇 關鍵修改：大於正門檻往左噴（手向右揮），小於負門檻往右噴（手向左揮）
-                // 註：因為鏡頭有水平翻轉(scaleX(-1))，deltaX > 0 代表觀眾的手「在畫面上向右移」，也就是觀眾體感的「向左揮」
+                let detectedDir = null;
+
+                // 判斷當前手勢方向
                 if (deltaX > swipeThreshold) {
-                    handleSwipe('left');
-                    lastBaseX = null; 
-                    return;
+                    detectedDir = 'left';  // 由右向左揮
                 } else if (deltaX < -swipeThreshold) {
-                    handleSwipe('right');
+                    detectedDir = 'right'; // 由左向右揮
+                }
+
+                // 🥇 關鍵防線：只有當「偵測到的方向」完全等於「預期的交替方向」時，才執行換牌
+                if (detectedDir && detectedDir === expectedDirection) {
+                    handleSwipe(detectedDir);
+                    
+                    // 成功換牌後，立刻將預期方向反轉（逼迫下一次必須換方向）
+                    expectedDirection = (expectedDirection === 'left') ? 'right' : 'left';
                     lastBaseX = null; 
                     return;
                 }
@@ -420,6 +426,7 @@
         
         startCamera();
 
+        // 局首隨機初始牌
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
