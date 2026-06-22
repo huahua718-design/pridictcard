@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Thumbs Up Edition</title>
+    <title>Card Randomizer AI - Bidirectional</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -56,12 +56,16 @@
             opacity: 1;
         }
         
+        /* 🥇 雙向動畫特效 */
         .swipe-left-out {
             transform: translateX(-180%) rotate(-15deg) scale(1.04) !important;
             opacity: 0 !important;
         }
+        .swipe-right-out {
+            transform: translateX(180%) rotate(15deg) scale(1.04) !important;
+            opacity: 0 !important;
+        }
 
-        /* 鎖定時的能量外框（比讚 2 秒後觸發） */
         .card-locked {
             box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
@@ -144,7 +148,7 @@
         const freezeView = document.getElementById('freeze-view');
 
         // ==========================================
-        // 🔊 魔術師專屬：隱音回饋系統
+        // 🔊 雙向聽音辨識系統
         // ==========================================
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playFeedbackSound(type) {
@@ -154,22 +158,26 @@
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
 
-                if (type === 'click') {
-                    // 普通洗牌：極低頻短促的「啵」
+                if (type === 'left') {
+                    // 左滑：低頻「啵」
                     osc.frequency.setValueAtTime(140, audioCtx.currentTime);
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.04);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.04);
+                } else if (type === 'right') {
+                    // 右滑：高頻「叮」
+                    osc.frequency.setValueAtTime(380, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.03, audioCtx.currentTime); 
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.05);
                 } else if (type === 'ready') {
-                    // 魔術堆疊就緒：高低雙音「嗶-逼」
+                    // 系統就緒：雙音
                     osc.frequency.setValueAtTime(280, audioCtx.currentTime);
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.08);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.08);
                 }
-            } catch (e) { console.log("Audio error"); }
+            } catch (e) {}
         }
 
         function getCardImagePath(suitIdx, num) {
@@ -190,16 +198,18 @@
             cardImg.src = getCardImagePath(suitIdx, num);
         }
 
-        function getNextCard() {
+        function getNextCard(direction) {
             swipeCount++; 
 
+            // 聽音判斷：如果是第二次，播放就緒音；否則根據方向播放高低音
             if (swipeCount === 2) {
-                playFeedbackSound('ready'); // 👂 聽到這個聲音，代表 +3 堆疊啟動，大拇指控制鎖開啟
+                playFeedbackSound('ready');
             } else {
-                playFeedbackSound('click'); // 👂 普通換牌提示音
+                playFeedbackSound(direction);
             }
 
             if (swipeCount <= 2) {
+                // 前兩次隨機
                 let nextSuitIndex, nextNum;
                 do {
                     nextSuitIndex = Math.floor(Math.random() * 4);
@@ -209,6 +219,7 @@
                 currentSuitIndex = nextSuitIndex;
                 currentNum = nextNum;
             } else {
+                // 第三次開始：穩定的 +3 堆疊邏輯
                 currentSuitIndex = (currentSuitIndex + 1) % 4;
                 currentNum = currentNum + 3;
                 if (currentNum > 13) {
@@ -217,24 +228,27 @@
             }
         }
 
-        function handleSwipe() {
+        // 🥇 修改：支援雙向動畫飛出
+        function handleSwipe(direction) {
             if (isAnimating || isLocked) return;
             isAnimating = true;
 
-            cardImg.classList.add('swipe-left-out');
+            const animationClass = (direction === 'left') ? 'swipe-left-out' : 'swipe-right-out';
+            cardImg.classList.add(animationClass);
 
             setTimeout(() => {
-                getNextCard();
+                getNextCard(direction);
                 
                 cardImg.style.transition = 'none';
-                cardImg.style.transform = 'translateX(-180%) rotate(15deg)';
+                // 根據方向決定卡片回彈的初始隱形位置
+                cardImg.style.transform = (direction === 'left') ? 'translateX(-180%) rotate(15deg)' : 'translateX(180%) rotate(-15deg)';
                 cardImg.style.opacity = '0';
                 
                 updateCardDOM(currentSuitIndex, currentNum);
                 cardImg.offsetHeight;
 
                 setTimeout(() => {
-                    cardImg.classList.remove('swipe-left-out');
+                    cardImg.classList.remove(animationClass);
                     cardImg.style.transition = 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.25s ease-out';
                     cardImg.style.transform = 'translateX(0) rotate(0deg)';
                     cardImg.style.opacity = '1';
@@ -313,21 +327,17 @@
         }
 
         // ==========================================
-        // 🥇 核心修改：精準的「大拇指朝上」演算法
+        // 🥇 雙向手勢偵測 Logic
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
         function checkIsThumbsUp(hand) {
-            // 1. 大拇指指尖 (4) 必須明顯高於大拇指關節 (3)
             const isThumbUp = hand[4].y < hand[3].y;
-            
-            // 2. 其餘四指必須處於「收攏/握拳」狀態 (指尖低於各自的第二關節)
             const isIndexDown = hand[8].y > hand[6].y;
             const isMiddleDown = hand[12].y > hand[10].y;
             const isRingDown = hand[16].y > hand[14].y;
             const isPinkyDown = hand[20].y > hand[18].y;
-
             return (isThumbUp && isIndexDown && isMiddleDown && isRingDown && isPinkyDown);
         }
 
@@ -340,9 +350,8 @@
 
             const hand = results.multiHandLandmarks[0];
 
-            // 🥇 偵測手勢改為「比讚」
             if (checkIsThumbsUp(hand)) {
-                if (swipeCount >= 2) { // 必須揮手兩次解鎖後，比讚才有效
+                if (swipeCount >= 2) { 
                     if (gestureStartTime === null) {
                         gestureStartTime = Date.now(); 
                     } else {
@@ -357,15 +366,20 @@
             }
 
             gestureStartTime = null;
-
             if (isLocked) return;
 
-            // 橫向揮手洗牌偵測 (依然使用開掌掌心面向鏡頭，辨識率最高)
             const currentBaseX = (hand[9].x + hand[12].x) / 2;
             if (lastBaseX !== null) {
                 const deltaX = currentBaseX - lastBaseX;
+                
+                // 🥇 關鍵修改：大於正門檻往左噴（手向右揮），小於負門檻往右噴（手向左揮）
+                // 註：因為鏡頭有水平翻轉(scaleX(-1))，deltaX > 0 代表觀眾的手「在畫面上向右移」，也就是觀眾體感的「向左揮」
                 if (deltaX > swipeThreshold) {
-                    handleSwipe();
+                    handleSwipe('left');
+                    lastBaseX = null; 
+                    return;
+                } else if (deltaX < -swipeThreshold) {
+                    handleSwipe('right');
                     lastBaseX = null; 
                     return;
                 }
@@ -380,7 +394,7 @@
         hands.setOptions({
             maxNumHands: 1, 
             modelComplexity: 0, 
-            minDetectionConfidence: 0.4, // 微調信心度，大拇指判定更乾淨
+            minDetectionConfidence: 0.4, 
             minTrackingConfidence: 0.4
         });
 
@@ -392,20 +406,16 @@
             }).then(stream => {
                 localStream = stream;
                 videoElement.srcObject = stream;
-                
                 const camera = new Camera(videoElement, {
                     onFrame: async () => {
                         if (freezeView.style.display !== 'block') {
                             await hands.send({ image: videoElement });
                         }
                     },
-                    width: 640,
-                    height: 480
+                    width: 640, height: 480
                 });
                 camera.start();
-            }).catch(err => {
-                console.error("Camera error");
-            });
+            }).catch(err => { console.error("Camera error"); });
         }
         
         startCamera();
