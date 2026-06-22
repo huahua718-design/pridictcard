@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Card Randomizer AI - Hand Leave Edition</title>
+    <title>Card Randomizer AI - Presence Glow Edition</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -51,7 +51,8 @@
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.8); 
             position: absolute;
-            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.2s ease;
+            /* 讓發光與動畫的過渡更加絲滑 */
+            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease-out, box-shadow 0.3s ease;
             transform: translateX(0) rotate(0deg);
             opacity: 1;
         }
@@ -66,7 +67,16 @@
             opacity: 0 !important;
         }
 
-        /* 🥇 全新提示字樣與動態效果 */
+        /* 🥇 偵測到手掌時的「神祕科技藍」微發光效果 */
+        .card-detect-glow {
+            box-shadow: 0 0 25px rgba(0, 162, 255, 0.6), 0 8px 20px rgba(0,0,0,0.6) !important;
+        }
+
+        /* 🥇 確定鎖定時的「命運綠」強光效果 */
+        .card-locked {
+            box-shadow: 0 0 30px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
+        }
+
         #hint-container {
             position: fixed;
             bottom: 8%;
@@ -95,10 +105,6 @@
         @keyframes bounce-anim {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-6px); }
-        }
-
-        .card-locked {
-            box-shadow: 0 0 25px rgba(0, 255, 123, 0.8), 0 8px 20px rgba(0,0,0,0.6) !important;
         }
 
         #countdown {
@@ -171,11 +177,10 @@
         let swipeCount = 0; 
         let expectedDirection = 'left'; 
 
-        // 🥇 核心狀態控制鎖
-        let cooldownActive = false;    // 時間冷卻鎖狀態
-        let isCountingDown = false;    // 是否正在進行 3-2-1 倒數
-        let noHandTimeout = null;      // 離開畫面 1.5 秒的計時器
-        let countdownInterval = null;  // 倒數秒數的定時器
+        let cooldownActive = false;    
+        let isCountingDown = false;    
+        let noHandTimeout = null;      
+        let countdownInterval = null;  
 
         const cardImg = document.getElementById('poker-card');
         const videoElement = document.getElementById('webcam');
@@ -197,17 +202,17 @@
                 gain.connect(audioCtx.destination);
 
                 if (type === 'left') {
-                    osc.frequency.setValueAtTime(140, audioCtx.currentTime); // 低頻「啵」
+                    osc.frequency.setValueAtTime(140, audioCtx.currentTime); 
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.04);
                 } else if (type === 'right') {
-                    osc.frequency.setValueAtTime(380, audioCtx.currentTime); // 高頻「叮」
+                    osc.frequency.setValueAtTime(380, audioCtx.currentTime); 
                     gain.gain.setValueAtTime(0.03, audioCtx.currentTime); 
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.05);
                 } else if (type === 'ready') {
-                    osc.frequency.setValueAtTime(280, audioCtx.currentTime); // 模式就緒雙音
+                    osc.frequency.setValueAtTime(280, audioCtx.currentTime); 
                     gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.08);
@@ -215,7 +220,6 @@
             } catch (e) {}
         }
 
-        // 🥇 更改提示字樣
         function updateArrowUI() {
             if (isLocked || isCountingDown) {
                 hintContainer.style.opacity = '0';
@@ -276,7 +280,7 @@
         function handleSwipe(direction) {
             if (isAnimating || isLocked || cooldownActive) return;
             isAnimating = true;
-            cooldownActive = true; // 🥇 啟動時間冷卻鎖，防止多跳牌
+            cooldownActive = true; 
 
             const animationClass = (direction === 'left') ? 'swipe-left-out' : 'swipe-right-out';
             cardImg.classList.add(animationClass);
@@ -289,29 +293,20 @@
                 cardImg.style.opacity = '0';
                 
                 updateCardDOM(currentSuitIndex, currentNum);
-                cardImg.offsetHeight; // 觸發重繪
+                cardImg.offsetHeight; 
 
                 setTimeout(() => {
                     cardImg.classList.remove(animationClass);
-                    cardImg.style.transition = 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.25s ease-out';
+                    cardImg.style.transition = 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.25s ease-out, box-shadow 0.3s ease';
                     cardImg.style.transform = 'translateX(0) rotate(0deg)';
                     cardImg.style.opacity = '1';
                     
-                    // 動畫結束
-                    setTimeout(() => { 
-                        isAnimating = false; 
-                    }, 350);
-
-                    // 🥇 時間冷卻鎖：換牌完成後強迫耳聾 800 毫秒，徹底解決過渡期誤觸
-                    setTimeout(() => {
-                        cooldownActive = false;
-                    }, 800);
-
+                    setTimeout(() => { isAnimating = false; }, 350);
+                    setTimeout(() => { cooldownActive = false; }, 800);
                 }, 20); 
             }, 250); 
         }
 
-        // 🥇 啟動 3-2-1 倒數序列
         function startCountdownSequence() {
             let count = 3;
             countdownEl.textContent = count;
@@ -330,24 +325,20 @@
             }, 1000);
         }
 
-        // 🥇 核心修改：取消倒數機制（當手掌重新回到畫面上）
         function cancelCountdownSequence() {
-            // 1. 清除 1.5 秒的離手等待計時器
             if (noHandTimeout) {
                 clearTimeout(noHandTimeout);
                 noHandTimeout = null;
             }
-            // 2. 清除 3-2-1 數字倒數定時器
             if (countdownInterval) {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
             }
-            // 3. 還原 UI 狀態
             if (isCountingDown) {
                 isCountingDown = false;
                 countdownEl.style.display = 'none';
                 cardImg.classList.remove('card-locked');
-                updateArrowUI(); // 重新顯示方向箭頭
+                updateArrowUI(); 
             }
         }
 
@@ -395,34 +386,40 @@
         }
 
         // ==========================================
-        // 🥇 核心偵測與離手狀態機
+        // 🥇 核心偵測與發光狀態機
         // ==========================================
         let lastBaseX = null;
         let swipeThreshold = 0.08; 
 
         function onResults(results) {
-            // 🥇 情況 A：畫面上沒有偵測到手掌
+            // 🥇 情況 A：畫面上沒有手掌
             if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
                 lastBaseX = null;
+                
+                // 🛑 沒手時，立刻移除藍色偵測微光
+                cardImg.classList.remove('card-detect-glow');
 
-                // 必須滿足：尚未鎖定、尚未進入倒數、且 1.5 秒離手計時器還沒被觸發過
                 if (!isLocked && !isCountingDown && !noHandTimeout) {
-                    // 觀眾洗牌滿 2 次解鎖後，離手才被允許啟動定格
                     if (swipeCount >= 2) {
                         noHandTimeout = setTimeout(() => {
                             isCountingDown = true;
-                            cardImg.classList.add('card-locked'); 
-                            updateArrowUI(); // 隱藏方向提示
+                            cardImg.classList.remove('card-detect-glow'); // 確保切換乾淨
+                            cardImg.classList.add('card-locked'); // 改為啟動綠色強光
+                            updateArrowUI(); 
                             startCountdownSequence();
-                        }, 1500); // 1.5 秒無手掌等待時間
+                        }, 1500); 
                     }
                 }
                 return;
             }
 
-            // 🥇 情況 B：手掌重新出現在畫面上
-            // 如果此時正在倒數或正在等待 1.5 秒，立刻全面取消，保護目前牌面
+            // 🥇 情況 B：手掌重新回到畫面上
             cancelCountdownSequence();
+
+            // ✨ 當手掌出現在畫面，且還沒進入最後拍照鎖定狀態時，加入藍色微發光
+            if (!isLocked && !isCountingDown) {
+                cardImg.classList.add('card-detect-glow');
+            }
 
             if (isLocked) return;
 
@@ -439,7 +436,6 @@
                     detectedDir = 'right'; 
                 }
 
-                // 當手勢方向正確，且冷卻鎖未啟動時才執行換牌
                 if (detectedDir && detectedDir === expectedDirection && !cooldownActive) {
                     handleSwipe(detectedDir);
                     expectedDirection = (expectedDirection === 'left') ? 'right' : 'left';
@@ -484,7 +480,6 @@
         
         startCamera();
 
-        // 初始隨機第一張牌
         currentSuitIndex = Math.floor(Math.random() * 4);
         currentNum = Math.floor(Math.random() * 13) + 1;
         updateCardDOM(currentSuitIndex, currentNum);
